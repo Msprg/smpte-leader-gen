@@ -103,6 +103,10 @@ def test_all_sizes_positive(width: int, height: int) -> None:
         layout.metro_bob_radius,
         layout.metro_arm_width,
         layout.metro_pivot_radius,
+        layout.metro_dot_row_y,
+        layout.metro_dot_radius,
+        layout.metro_dot_accent_radius,
+        layout.metro_dot_spacing,
     ]
     for value in positive_fields:
         assert value > 0
@@ -216,6 +220,24 @@ def test_metronome_widget_in_top_band(width: int, height: int) -> None:
     # The pivot stays above the clock's top edge (no overlap with the clock).
     clock_top = layout.cy - layout.clock_radius
     assert layout.metro_pivot_y + layout.metro_pivot_radius < clock_top
+
+
+@pytest.mark.parametrize(("width", "height"), PRESETS)
+def test_metronome_dot_row_in_top_band(width: int, height: int) -> None:
+    layout = compute_layout(width, height)
+    # Centred horizontally, in the top band.
+    assert layout.metro_center_x == pytest.approx(width / 2.0)
+    assert layout.metro_dot_row_y == pytest.approx(0.170 * height)
+    # The largest (accent) dot clears the top readout row above and the clock below.
+    dot_top = layout.metro_dot_row_y - layout.metro_dot_accent_radius
+    dot_bottom = layout.metro_dot_row_y + layout.metro_dot_accent_radius
+    clock_top = layout.cy - layout.clock_radius
+    assert dot_top > 0.11 * height
+    assert dot_bottom < clock_top
+    # The downbeat/accent dot is larger than a regular beat dot, and adjacent dots
+    # never touch at the default centre-to-centre spacing.
+    assert layout.metro_dot_accent_radius > layout.metro_dot_radius
+    assert layout.metro_dot_spacing > 2.0 * layout.metro_dot_accent_radius
 
 
 def test_layout_is_frozen() -> None:

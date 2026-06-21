@@ -182,6 +182,7 @@ class Config(BaseModel):
     metronome_accent_freq: float = 2000.0
     metronome_click_freq: float = 1500.0
     metronome_sub_freq: float = 1200.0
+    metronome_style: str = "dots"
     end_align: str | None = None
     end_cue: bool = False
     # visual
@@ -358,6 +359,15 @@ class Config(BaseModel):
                 f"got {v!r}"
             ) from None
         return text
+
+    @field_validator("metronome_style")
+    @classmethod
+    def _check_metronome_style(cls, v: str) -> str:
+        if v not in ("dots", "pendulum"):
+            raise ValueError(
+                f"metronome_style must be 'dots' or 'pendulum', got {v!r}"
+            )
+        return v
 
     @field_validator("end_align")
     @classmethod

@@ -16,7 +16,8 @@ It is **not** a strict reproduction of the SMPTE 301 leader. It is an *AV-sync t
 - a **flashing circle** that flashes on the exact frame an audio cue fires,
 - a **single-frame 1 kHz sync beep** every leader-second, preserving the classic **"2-pop"** accent,
 - an **optional metronome** (with subdivisions and an accented downbeat), visualised
-  by a top-center swinging-pendulum animation locked to the audio clicks.
+  by a top-center animation locked to the audio clicks — a row of beat dots by
+  default, or a swinging pendulum.
 
 Frame and sample timing **MUST** be accurate enough for fractional rates such as **23.976 fps (24000/1001)**. See §4.
 
@@ -35,7 +36,7 @@ These were explicitly chosen by the product owner. Do not revisit without asking
 | Frame rates | **Full broadcast preset set AND arbitrary/rational input**: 23.976, 24, 25, 29.97, 30, 50, 59.94, 60 as exact rationals, plus any user-supplied integer or `num/den` value. |
 | Resolution | **Preset list + custom**, default **1920×1080**. Presets: 720p, 1080p, 2K DCI (2048×1080), 4K UHD (3840×2160). |
 | Beep / flash cadence | **Per-second beep + flash, with the classic single 2-pop accent** at 2 leader-seconds before the end. |
-| Metronome | **Off by default; enabled when `--bpm` is given.** Supports `--time-sig` (accented downbeat) and `--subdivision`. Distinct timbre from the sync beep. Visualised by a top-center swinging-pendulum animation locked to the clicks. |
+| Metronome | **Off by default; enabled when `--bpm` is given.** Supports `--time-sig` (accented downbeat) and `--subdivision`. Distinct timbre from the sync beep. Visualised by a top-center animation locked to the clicks: a row of beat dots by default, or a swinging pendulum (`--metronome-style`). |
 | Audio defaults | **48 kHz / 24-bit / stereo PCM**, **1 kHz sine** sync beep. |
 | Channel routing | **Mixed stereo, both cues centered** (summed L/R) by default. Isolation/panning is a future flag. |
 | End behavior | **2-pop, reach t=0, then a short black tail.** `t=0` = first frame of picture (the leader's reference zero). |
@@ -116,7 +117,7 @@ Use **`click`** (or argparse) for the CLI and **pydantic v2** (or a validated da
 | `--no-persecond-beep` | flag | off | If set, only the 2-pop fires (classic). |
 | `--no-twopop` | flag | off | Disable the 2-pop accent. |
 
-### 5.4 Metronome (audio clicks + top-center pendulum; enabled by `--bpm`)
+### 5.4 Metronome (audio clicks + top-center animation; enabled by `--bpm`)
 | Flag | Type | Default | Notes |
 |---|---|---|---|
 | `--bpm` | float | none | Presence enables the metronome. |
@@ -125,6 +126,7 @@ Use **`click`** (or argparse) for the CLI and **pydantic v2** (or a validated da
 | `--metronome-start` | enum/float | `0` | When clicks begin: `0` (start), `t0` (at FFOP), or seconds offset. |
 | `--metronome-level-dbfs` | float | `-14` | |
 | `--metronome-accent-freq` / `--metronome-click-freq` / `--metronome-sub-freq` | float | `2000`/`1500`/`1200` | Distinct from the 1 kHz beep. |
+| `--metronome-style` | enum | `dots` | Top-center visual: `dots` (row of beat lights) or `pendulum` (swinging arm). |
 
 ### 5.5 Visual toggles
 | Flag | Type | Default | Notes |
@@ -196,7 +198,9 @@ All synthesis in NumPy float64, summed into a stereo buffer, peak-checked, then 
 - Click timbre: short percussive blip (a few ms) — e.g. a windowed high sine or filtered noise — at `--metronome-accent-freq` (downbeat), `--metronome-click-freq` (beat), `--metronome-sub-freq` (subdivision), all **distinct from 1 kHz** so the metronome is audibly separable from the sync beep.
 - Start per `--metronome-start` (`0` = file start, `t0` = at FFOP, or seconds). Metronome MAY run through the black tail.
 - Level `--metronome-level-dbfs`.
-- **Visual:** a top-center inverted-pendulum animation, drawn over non-tail frames whenever `--bpm` is set. The arm angle is `swing · cos(π · beats_elapsed)` from vertical (one beat per half-swing; the bob is at an extreme on each beat), where `beats_elapsed = (frame_start_sample − start_sample) / beat_samples`. The bob flashes on beats (brighter, with a ring, on the downbeat) and the pivot pulses on every click — driven from the same click onsets as the audio so the visual stays locked to it.
+- **Visual:** a top-center animation, drawn over non-tail frames whenever `--bpm` is set, in the style chosen by `--metronome-style`. Both styles flash from the same click onsets as the audio so the visual stays locked to it.
+  - **`dots`** (default): a single horizontal row of beat lights, one per beat of the bar (`time_sig` numerator). Each beat lights its dot toward the accent colour (then it fades over ~one beat), so the lit light marches across the row one beat at a time; the bar's downbeat is the larger **accent** dot. Subdivisions are not shown (the dots track beats).
+  - **`pendulum`**: an inverted-pendulum arm at angle `swing · cos(π · beats_elapsed)` from vertical (one beat per half-swing; the bob is at an extreme on each beat), where `beats_elapsed` is pinned to the beat-onset frames. The bob flashes on beats (brighter, with a ring, on the downbeat) and the pivot pulses on every click (so subdivisions read as a finer tick).
 
 ### 7.3 Mix & safety
 - Sum beep + metronome; if peak > -1 dBFS, scale down and log a warning (do not silently clip).

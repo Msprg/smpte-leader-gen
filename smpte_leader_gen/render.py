@@ -156,8 +156,10 @@ class FrameRenderer:
         self._font_syncinfo = _load_font(FONT_BOLD, self.layout.syncinfo_font_px)
         self._sync_info_lines = self._compute_sync_info()
 
-        # Top-center metronome pendulum animation (only when --bpm is set).
+        # Top-center metronome animation (only when --bpm is set). The default
+        # style is a row of beat "dots"; "pendulum" is the alternate style.
         self._metro_active = config.bpm is not None
+        self._metro_style = config.metronome_style
         if self._metro_active:
             self._init_metronome()
 
@@ -427,19 +429,17 @@ class FrameRenderer:
         np.copyto(arr, np.asarray(image))
 
     # ------------------------------------------------------------------ #
-    # Metronome animation (top-center inverted pendulum)
+    # Metronome animation (top-center: dots by default, pendulum optional)
     # ------------------------------------------------------------------ #
 
     def _init_metronome(self) -> None:
-        """Precompute the per-frame pendulum phase and flash levels (--bpm only).
+        """Precompute the per-frame metronome animation state (--bpm only).
 
-        The pendulum swings one beat per half-period, so the bob reaches an extreme
-        (and momentarily stops) exactly on each beat -- true pendulum motion that
-        reads as the metronome's tick. The bob flashes on beats (brighter, with a
-        ring, on the bar's downbeat) and the pivot pulses on every click, so the
-        subdivision grid reads as a finer tick. Everything is derived from the exact
-        sample grid (the same onsets the audio uses), so the visual stays locked to
-        the clicks.
+        Builds the drift-free frame-start lookup and the click schedule shared by
+        both visual styles, then delegates to the active one: the default row of
+        beat **dots** (each lighting in turn, the downbeat larger) or the optional
+        swinging **pendulum**. All state derives from the exact click sample grid
+        the audio uses, so the visual stays locked to the audible clicks.
         """
         sched = self.schedule
         cfg = self.config
@@ -455,6 +455,29 @@ class FrameRenderer:
             [frame_start_sample(i, sr, fps) for i in range(n_frames + 1)],
             dtype=np.int64,
         )
+        clicks = metronome_click_samples(sched, cfg)
+
+        if self._metro_style == "pendulum":
+            self._init_metronome_pendulum(n_frames, frame_starts, clicks)
+        else:
+            self._init_metronome_dots(n_frames, frame_starts, clicks)
+
+    def _init_metronome_pendulum(
+        self,
+        n_frames: int,
+        frame_starts: np.ndarray,
+        clicks: list[tuple[int, str]],
+    ) -> None:
+        """Precompute the per-frame pendulum phase and flash levels.
+
+        The pendulum swings one beat per half-period, so the bob reaches an extreme
+        (and momentarily stops) exactly on each beat -- true pendulum motion that
+        reads as the metronome's tick. The bob flashes on beats (brighter, with a
+        ring, on the bar's downbeat) and the pivot pulses on every click, so the
+        subdivision grid reads as a finer tick.
+        """
+        cfg = self.config
+        fps = self.schedule.fps
 
         # Per-frame flash envelopes: bob (beats/downbeats) and pivot (every click).
         self._metro_bob_level = np.zeros(n_frames, dtype=np.float64)
@@ -476,7 +499,7 @@ class FrameRenderer:
                                  int(sub_interval_frames) - 1))
 
         beat_frames: list[int] = []  # frame of each beat onset, in beat order
-        for sample, role in metronome_click_samples(sched, cfg):
+        for sample, role in clicks:
             f0 = int(np.searchsorted(frame_starts, sample, side="right")) - 1
             if f0 < 0:
                 continue
@@ -512,6 +535,55 @@ class FrameRenderer:
             ) / self._metro_beat_samples
             self._metro_beats_elapsed = np.maximum(beats, 0.0)
 
+    def _init_metronome_dots(
+        self,
+        n_frames: int,
+        frame_starts: np.ndarray,
+        clicks: list[tuple[int, str]],
+    ) -> None:
+        """Precompute the per-frame, per-beat flash levels for the dots style.
+
+        There is one dot per beat of the bar (``time_sig_beats``). Each beat lights
+        its dot, which then fades over (up to) one beat interval, so the lit dot
+        sweeps across the row one beat at a time -- a row of LEDs marching in time.
+        The same dot only re-lights a full bar later, so the long decay reads as a
+        clean travelling light rather than a steady glow. Subdivision clicks do not
+        light a dot (the dots track beats, not subdivisions).
+        """
+        cfg = self.config
+        fps = self.schedule.fps
+        lay = self.layout
+
+        n_beats = max(1, cfg.time_sig_beats)
+        self._metro_n_beats = n_beats
+
+        # Fit the row within the central 80% of the frame width; shrink the
+        # centre-to-centre spacing only if a large bar count would overflow.
+        spacing = lay.metro_dot_spacing
+        max_w = 0.80 * float(self._width)
+        if n_beats > 1 and (n_beats - 1) * spacing > max_w:
+            spacing = max_w / (n_beats - 1)
+        self._metro_dot_spacing = spacing
+
+        # Per-frame flash level for each beat dot (column == beat position in bar).
+        self._metro_dot_level = np.zeros((n_frames, n_beats), dtype=np.float64)
+
+        beat_interval_frames = 60.0 * float(fps) / cfg.bpm
+        dot_decay = max(2, int(round(beat_interval_frames)))
+
+        # Walk the beats in order; the k-th beat (skipping subdivisions) lights the
+        # dot at bar position ``k % n_beats`` (position 0 is the accented downbeat).
+        beat_ordinal = 0
+        for sample, role in clicks:
+            if role == "sub":
+                continue
+            pos = beat_ordinal % n_beats
+            beat_ordinal += 1
+            f0 = int(np.searchsorted(frame_starts, sample, side="right")) - 1
+            if f0 < 0:
+                continue
+            self._fill_flash(self._metro_dot_level[:, pos], None, f0, dot_decay, False)
+
     @staticmethod
     def _fill_flash(
         level: np.ndarray,
@@ -539,14 +611,60 @@ class FrameRenderer:
                     accent[f] = is_accent
 
     def _draw_metronome(self, ctx: cairo.Context, i: int) -> None:
-        """Draw the top-center pendulum for frame ``i`` (no-op when --bpm is off).
+        """Draw the active metronome widget for frame ``i`` (no-op when --bpm is off).
+
+        Dispatches to the configured style: the default row of beat ``dots`` or the
+        optional ``pendulum``.
+        """
+        if not self._metro_active or i >= self.schedule.total_frames:
+            return
+        if self._metro_style == "pendulum":
+            self._draw_metronome_pendulum(ctx, i)
+        else:
+            self._draw_metronome_dots(ctx, i)
+
+    def _draw_metronome_dots(self, ctx: cairo.Context, i: int) -> None:
+        """Draw the top-center row of beat dots for frame ``i``.
+
+        Each dot is a faint socket ring with a filled core: dim at rest, flashing
+        toward the accent color on its beat. The bar's downbeat (position 0) is the
+        larger accent dot, so the accent reads by size as well as by being lit
+        first. The lit dot sweeps left-to-right across the bar, one beat at a time.
+        """
+        lay = self.layout
+        n = self._metro_n_beats
+        spacing = self._metro_dot_spacing
+        row_w = (n - 1) * spacing
+        x0 = lay.metro_center_x - row_w / 2.0
+        y = lay.metro_dot_row_y
+
+        resting = _blend(self._bg, self._fg, 0.30)
+        levels = self._metro_dot_level[i]
+        for pos in range(n):
+            cx = x0 + pos * spacing
+            level = float(levels[pos])
+            base_r = (
+                lay.metro_dot_accent_radius if pos == 0 else lay.metro_dot_radius
+            )
+            # Faint socket ring so the whole bar of beats is always visible.
+            ctx.set_source_rgba(*self._fg, lay.geometry_line_alpha)
+            ctx.set_line_width(lay.crosshair_line_width)
+            ctx.arc(cx, y, base_r, 0.0, 2.0 * math.pi)
+            ctx.stroke()
+            # Filled core: dim at rest, flashing toward the accent on the beat.
+            col = _blend(resting, self._accent, level)
+            r = base_r * (1.0 + 0.10 * level)
+            ctx.set_source_rgb(*col)
+            ctx.arc(cx, y, r, 0.0, 2.0 * math.pi)
+            ctx.fill()
+
+    def _draw_metronome_pendulum(self, ctx: cairo.Context, i: int) -> None:
+        """Draw the top-center pendulum for frame ``i``.
 
         The arm swings to ``angle = swing * cos(pi * beats_elapsed)`` from vertical;
         the bob lights from a resting weight toward the accent color on each beat
         (with a ring on the downbeat); the pivot disc pulses on every click.
         """
-        if not self._metro_active or i >= self.schedule.total_frames:
-            return
         lay = self.layout
         px, py, arm = lay.metro_center_x, lay.metro_pivot_y, lay.metro_arm_len
 
@@ -595,7 +713,7 @@ class FrameRenderer:
         ctx.fill()
 
     def _draw_metronome_layer(self, arr: np.ndarray, i: int) -> np.ndarray:
-        """Composite only the metronome pendulum over ``arr`` (used in pre-roll)."""
+        """Composite only the metronome widget over ``arr`` (used in pre-roll)."""
         surface = self._rgb_to_cairo_surface(arr)
         ctx = cairo.Context(surface)
         self._draw_metronome(ctx, i)
@@ -650,8 +768,8 @@ class FrameRenderer:
 
         # Draw dynamic vector elements (wipe, wand, flash) onto a cairo surface
         # initialized from the static layer, then read back to ``arr``. The
-        # metronome pendulum is drawn inside _draw_dynamic_vectors for countdown
-        # frames; pre-roll frames get the pendulum alone (the metronome is audible
+        # metronome widget is drawn inside _draw_dynamic_vectors for countdown
+        # frames; pre-roll frames get the widget alone (the metronome is audible
         # there too) but none of the countdown vectors.
         if in_countdown:
             arr = self._draw_dynamic_vectors(arr, i)
@@ -718,7 +836,7 @@ class FrameRenderer:
         # Audio-ruler playhead: marker on the current frame's tick.
         self._draw_ruler_marker(ctx, i)
 
-        # Top-center metronome pendulum (locked to the click grid).
+        # Top-center metronome widget (locked to the click grid).
         if self._metro_active:
             self._draw_metronome(ctx, i)
 

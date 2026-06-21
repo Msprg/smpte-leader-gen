@@ -311,13 +311,29 @@ def test_sync_info_is_bold_turquoise() -> None:
 
 
 def _metro_renderer(fps: str = "24", bpm: float = 120, **over) -> FrameRenderer:
-    """A 1080p renderer with the metronome active (4/4, subdivision 2).
+    """A 1080p renderer with the *pendulum* metronome active (4/4, subdivision 2).
 
     At 24 fps / 120 bpm there are 12 frames per beat and 6 per subdivision click.
+    The dots style is the default; these tests exercise the pendulum explicitly.
     """
+    over.setdefault("metronome_style", "pendulum")
     cfg = build_config(
         fps=fps, resolution="1080p", output="o.mov", lead_seconds=8,
         tail_seconds=2.0, bpm=bpm, time_sig="4/4", subdivision=2, **over,
+    )
+    return FrameRenderer(cfg, _sched_for(cfg))
+
+
+def _dots_renderer(fps: str = "24", bpm: float = 120, **over) -> FrameRenderer:
+    """A 1080p renderer with the default *dots* metronome active (4/4).
+
+    At 24 fps / 120 bpm there are 12 frames per beat, so the four 4/4 dots light at
+    frames 0, 12, 24, 36 (then the downbeat again at 48).
+    """
+    over.setdefault("time_sig", "4/4")
+    cfg = build_config(
+        fps=fps, resolution="1080p", output="o.mov", lead_seconds=8,
+        tail_seconds=2.0, bpm=bpm, **over,
     )
     return FrameRenderer(cfg, _sched_for(cfg))
 
@@ -400,20 +416,99 @@ def test_metronome_renders_accent_in_top_center_band() -> None:
 
 
 def test_metronome_shows_during_preroll() -> None:
-    """The pendulum is drawn during pre-roll (the metronome is audible there)."""
+    """The metronome widget is drawn during pre-roll (it is audible there too)."""
     cfg = build_config(
         fps="24", resolution="1080p", output="o.mov", lead_seconds=8,
         tail_seconds=1.0, preroll_seconds=1.0, bpm=120, time_sig="4/4",
     )
     r = FrameRenderer(cfg, _sched_for(cfg))
     assert r.schedule.preroll_frames > 0
-    # A pre-roll frame is not just the static background (pendulum composited in).
+    # A pre-roll frame is not just the static background (widget composited in).
     pre = np.frombuffer(r.render_frame(0), dtype=np.uint8).reshape(
         cfg.height, cfg.width, 3
     )
     band = (slice(int(0.10 * cfg.height), int(0.28 * cfg.height)),
             slice(int(0.40 * cfg.width), int(0.60 * cfg.width)))
     assert not np.array_equal(pre[band], r._static[band])  # noqa: SLF001
+
+
+# --------------------------------------------------------------------------- #
+# Metronome dots style (the default)
+# --------------------------------------------------------------------------- #
+
+
+def test_metronome_style_defaults_to_dots() -> None:
+    """Without --metronome-style the dots style is used; the pendulum arrays are
+    not built (and vice-versa)."""
+    cfg = build_config(fps="24", resolution="1080p", output="o.mov", bpm=120)
+    assert cfg.metronome_style == "dots"
+    r = FrameRenderer(cfg, _sched_for(cfg))
+    assert r._metro_style == "dots"  # noqa: SLF001
+    assert hasattr(r, "_metro_dot_level")
+    assert not hasattr(r, "_metro_bob_level")  # pendulum-only state absent
+
+
+def test_metronome_dots_one_column_per_beat() -> None:
+    """There is exactly one dot (level column) per beat of the bar."""
+    r = _dots_renderer(time_sig="3/4")
+    assert r._metro_n_beats == 3  # noqa: SLF001
+    assert r._metro_dot_level.shape[1] == 3  # noqa: SLF001
+
+
+def test_metronome_dots_light_in_order() -> None:
+    """Each beat lights the next dot in turn and the bar wraps to the downbeat;
+    between beats the just-lit dot fades while no other dot is lit."""
+    r = _dots_renderer()  # 24 fps / 120 bpm -> 12 frames/beat, 4 beats
+    lvl = r._metro_dot_level  # noqa: SLF001
+    for frame, lit in [(0, 0), (12, 1), (24, 2), (36, 3), (48, 0)]:
+        assert lvl[frame, lit] == pytest.approx(1.0)
+        assert int(np.argmax(lvl[frame])) == lit  # exactly that dot is brightest
+    # Mid-beat (frame 6): the downbeat dot is fading, the others are dark.
+    assert 0.0 < lvl[6, 0] < 1.0
+    assert lvl[6, 1] == 0.0
+    assert lvl[6, 2] == 0.0
+
+
+def test_metronome_dots_downbeat_drawn_larger_in_accent() -> None:
+    """On the downbeat the leftmost dot paints accent-colored pixels in the top
+    band, and its lit footprint is larger than a regular beat dot's (size encodes
+    the accent)."""
+    r = _dots_renderer()
+    cfg = r.config
+    accent = np.array(_rgbf_to_rgb255(cfg.accent_color), dtype=np.int16)
+
+    def red_count(frame: int) -> int:
+        arr = np.frombuffer(r.render_frame(frame), dtype=np.uint8).reshape(
+            cfg.height, cfg.width, 3
+        ).astype(np.int16)
+        band = arr[int(0.13 * cfg.height):int(0.21 * cfg.height), :]
+        return int((np.abs(band - accent).sum(axis=2) < 40).sum())
+
+    downbeat = red_count(0)   # accent dot (larger), lit
+    beat = red_count(12)      # regular beat dot, lit
+    assert downbeat > 0 and beat > 0
+    assert downbeat > beat    # the downbeat dot is drawn larger
+
+
+def test_metronome_dots_active_and_deterministic() -> None:
+    """The dots animation advances frame to frame and is reproducible."""
+    r = _dots_renderer()
+    base = r.schedule.countdown_start_frame
+    assert r.render_frame(base + 1) != r.render_frame(base + 13)  # different dot lit
+    assert r.render_frame(base + 1) == r.render_frame(base + 1)
+
+
+@pytest.mark.parametrize("fps", ["24", "23.976", "30", "25"])
+def test_metronome_dots_one_dot_lit_per_beat_onset(fps: str) -> None:
+    """At every rate, each beat onset frame has exactly one fully-lit dot (the
+    flashes stay locked to the drift-free click grid)."""
+    r = _dots_renderer(fps=fps)
+    lvl = r._metro_dot_level  # noqa: SLF001
+    ff = r.schedule.ffop_frame
+    onset_frames = np.where(np.isclose(lvl[:ff].max(axis=1), 1.0))[0]
+    assert onset_frames.size > 2
+    for f in onset_frames:
+        assert int((lvl[f] >= 0.999).sum()) == 1
 
 
 def test_cairo_surface_to_rgb_shape(renderer: FrameRenderer) -> None:

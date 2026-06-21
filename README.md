@@ -25,9 +25,10 @@ wand, big descending numbers, a single-frame reference beep) and adds:
   corner-to-corner diagonals and a centre crosshair,
 - a **single-frame 1 kHz sync beep** every leader-second, preserving the classic
   **"2-pop"** accent,
-- an **optional metronome** (with subdivisions and an accented downbeat), shown as a
-  **swinging-pendulum animation** at the top-center that ticks in lock-step with the
-  audio clicks,
+- an **optional metronome** (with subdivisions and an accented downbeat), shown by a
+  top-center animation that ticks in lock-step with the audio clicks — by default a
+  **row of beat dots** that light red one beat at a time (the downbeat larger), or
+  optionally a **swinging pendulum** (`--metronome-style pendulum`),
 - optional **`--end-align`**: extend the tail so the file ends exactly on the next
   metronome beat/bar/subdivision, so butt-joined music continues the click grid.
 
@@ -166,12 +167,20 @@ downbeat (first beat of each bar) is accented; `--subdivision 2` adds eighth-not
 clicks. Click timbres (accent 2000 Hz / beat 1500 Hz / subdivision 1200 Hz) are
 deliberately **distinct from the 1 kHz sync beep**.
 
-Whenever `--bpm` is set, a **swinging-pendulum animation** appears at the
-top-center (an inverted "Maelzel" pendulum). It swings one beat per half-swing,
-reaching an extreme exactly on each beat; the bob lights up on every beat
-(brighter, with a ring, on the bar's downbeat) and the pivot pulses on every
-click, so subdivisions read as a finer tick. The motion is derived from the same
-sample grid as the audio, so the visual stays locked to the clicks.
+Whenever `--bpm` is set, a top-center animation appears, in one of two styles
+(`--metronome-style`):
+
+- **`dots`** (default): a single horizontal row of beat lights, one per beat of
+  the bar. Each beat lights its dot red in turn — the lit light marches across the
+  row — and the bar's downbeat is the larger accent dot, so the downbeat reads by
+  size as well as colour. Subdivisions are not shown (the dots track beats).
+- **`pendulum`**: an inverted "Maelzel" pendulum that swings one beat per
+  half-swing, reaching an extreme exactly on each beat; the bob lights up on every
+  beat (brighter, with a ring, on the downbeat) and the pivot pulses on every
+  click, so subdivisions read as a finer tick.
+
+Either way the motion is derived from the same sample grid as the audio, so the
+visual stays locked to the clicks.
 
 ### SMPTE count style (fixed 8 → 2)
 
@@ -226,7 +235,7 @@ hyphens or underscores) is read first; **explicit CLI flags override file values
 | `--no-persecond-beep` | flag | off | Only the 2-pop fires (classic). |
 | `--no-twopop` | flag | off | Disable the 2-pop accent. |
 
-### Metronome (audio clicks + top-center pendulum; enabled by `--bpm`)
+### Metronome (audio clicks + top-center animation; enabled by `--bpm`)
 
 | Flag | Type | Default | Notes |
 |---|---|---|---|
@@ -238,6 +247,7 @@ hyphens or underscores) is read first; **explicit CLI flags override file values
 | `--metronome-accent-freq` | float | `2000` | Downbeat click frequency. |
 | `--metronome-click-freq` | float | `1500` | Beat click frequency. |
 | `--metronome-sub-freq` | float | `1200` | Subdivision click frequency. |
+| `--metronome-style` | choice | `dots` | Visual style: `dots` (row of beat lights) or `pendulum` (swinging arm). |
 | `--end-align` | choice | none | `beat`/`bar`/`subdivision`: extend the black tail so the output ends exactly on the next metronome grid point (requires `--bpm`). |
 | `--end-cue` | flag | off | With `--end-align`, sound the final boundary beat as an audio cue and end just after it (instead of ending silently on the boundary). |
 

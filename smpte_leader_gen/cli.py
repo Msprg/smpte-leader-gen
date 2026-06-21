@@ -65,6 +65,7 @@ _PASSTHROUGH_PARAMS: tuple[str, ...] = (
     "metronome_accent_freq",
     "metronome_click_freq",
     "metronome_sub_freq",
+    "metronome_style",
     "end_align",
     "end_cue",
     "count_style",
@@ -191,6 +192,10 @@ def _format_duration(total_frames: int, fps_num: int, fps_den: int) -> str:
               show_default=True, help="Beat click frequency (Hz).")
 @click.option("--metronome-sub-freq", type=float, default=1200.0,
               show_default=True, help="Subdivision click frequency (Hz).")
+@click.option("--metronome-style", type=click.Choice(["dots", "pendulum"]),
+              default="dots", show_default=True,
+              help="Visual metronome style: 'dots' (a row of beat lights flashing "
+                   "in turn, downbeat larger) or 'pendulum' (a swinging arm).")
 @click.option("--end-align",
               type=click.Choice(["beat", "bar", "subdivision"]), default=None,
               help="Extend the black tail so the output ends exactly on the next "
