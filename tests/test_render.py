@@ -16,13 +16,13 @@ import hashlib
 import pytest
 
 from smpte_leader_gen.config import build_config, Config
-from smpte_leader_gen.render import FrameRenderer
+from smpte_leader_gen.render import FrameRenderer, _format_fps
 from smpte_leader_gen.timing import Schedule, build_schedule
 
 # sha256 of the packed RGB24 bytes of the 2-pop ("2") frame, 1920x1080 @ 24 fps,
 # lead=8, tail=2, preroll=0, count_style=full. Baked from this environment.
 GOLDEN_2POP_SHA256 = (
-    "863df22d065cfe1748308a774e52cc514ed3d52044f7f01311b068e26e8f3acf"
+    "cdfa0b15edcd8635d91d41535c6774fc718e88d76c9f617dc52a9d95af0aa182"
 )
 
 
@@ -131,6 +131,51 @@ def test_preroll_has_no_number() -> None:
     assert len(buf) == config.width * config.height * 3
     # Not all black (background fill + crosshair + clock are present).
     assert set(buf) != {0}
+
+
+@pytest.mark.parametrize(
+    ("num", "den", "expected"),
+    [
+        (24, 1, "24"),
+        (25, 1, "25"),
+        (30, 1, "30"),
+        (24000, 1001, "23.976"),
+        (30000, 1001, "29.97"),
+        (60000, 1001, "59.94"),
+    ],
+)
+def test_format_fps_distinguishes_fractional(num: int, den: int, expected: str) -> None:
+    """The counter denominator shows fractional rates distinctly."""
+    assert _format_fps(num, den) == expected
+
+
+def test_counter_uses_fractional_fps_denominator() -> None:
+    """A 23.976 render shows the fractional fps as the counter denominator."""
+    cfg = build_config(fps="23.976", resolution="720p", output="o.mov",
+                       lead_seconds=8, tail_seconds=1.0)
+    renderer = FrameRenderer(cfg, _make_schedule(cfg))
+    assert renderer._fps_display == "23.976"  # noqa: SLF001
+
+
+def test_ruler_marker_moves_within_leader_second(renderer: FrameRenderer) -> None:
+    """The ruler marker (and wand) move frame to frame within a leader-second."""
+    sched = renderer.schedule
+    base = sched.countdown_start_frame  # frame 0 of the first leader-second
+    # Two frames in the same leader-second (same big number) differ in bytes
+    # because the playhead marker and wand have advanced.
+    assert sched.number_at(base + 3) == sched.number_at(base + 8)
+    assert renderer.render_frame(base + 3) != renderer.render_frame(base + 8)
+
+
+def test_static_layer_has_ruler_near_bottom(renderer: FrameRenderer) -> None:
+    """The cached static layer is non-background in the ruler band (ticks drawn)."""
+    static = renderer._static  # noqa: SLF001
+    lay = renderer.layout
+    y0 = int(lay.ruler_y)
+    y1 = int(lay.ruler_label_y) + 1
+    band = static[y0:y1, :, :]
+    # The ruler band is not uniformly the background color.
+    assert band.std() > 0
 
 
 def test_cairo_surface_to_rgb_shape(renderer: FrameRenderer) -> None:

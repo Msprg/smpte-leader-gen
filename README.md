@@ -9,9 +9,16 @@ It is **not** a strict reproduction of the SMPTE 301 leader. It is an *AV-sync
 test generator* that borrows the leader's visual language (rotating clock + sweep
 wand, big descending numbers, a single-frame reference beep) and adds:
 
-- a running **visual countdown timer**,
-- an on-screen **per-second frame counter** in `x/N` form (e.g. `7/23`),
+- a running **visual countdown timer** (precise ms, **top-right**),
+- a zero-padded **per-second frame counter** in the **top-left**, whose denominator
+  is the **actual fps** so near-identical rates stay distinct (e.g. `07/23.976`
+  vs `07/24`),
 - a **flashing circle** that flashes on the exact frame an audio cue fires,
+- a **bottom "audio ruler"**: a per-frame tick scale with a moving playhead marker
+  that returns to the accent **origin tick on every beep** — a linear, frame-
+  calibrated reference for discovering and quantifying A/V-sync offset,
+- **registration geometry**: full-frame crosshair + corner-to-corner diagonals + a
+  centred rectangle sharing the video's aspect ratio,
 - a **single-frame 1 kHz sync beep** every leader-second, preserving the classic
   **"2-pop"** accent,
 - an **optional audio-only metronome** (with subdivisions and an accented downbeat).

@@ -127,6 +127,15 @@ class FrameRenderer:
         self._font_counter = _load_font(FONT_REGULAR, self.layout.counter_font_px)
         self._font_timer = _load_font(FONT_REGULAR, self.layout.timer_font_px)
         self._font_burnin = _load_font(FONT_REGULAR, self.layout.burnin_font_px)
+        self._font_ruler = _load_font(FONT_REGULAR, self.layout.ruler_label_font_px)
+
+        # Frame-counter denominator: the actual fps as a decimal, so rates that
+        # differ only by a fraction (e.g. 23.976 vs 24) are visually distinct.
+        self._fps_display = _format_fps(
+            schedule.fps.numerator, schedule.fps.denominator
+        )
+        # Major-tick / label interval for the bottom ruler (every 5 frames).
+        self._ruler_major = 5
 
         # Build and cache the static RGB background.
         self._static: np.ndarray = self._build_static()
@@ -139,7 +148,11 @@ class FrameRenderer:
     # ------------------------------------------------------------------ #
 
     def _build_static(self) -> np.ndarray:
-        """Draw the constant layer (bg + crosshair + clock circle) once.
+        """Draw the constant layer once (background, registration geometry, clock,
+        and the audio-ruler scale + labels).
+
+        Constant elements only -- the moving wand/wipe/flash and the ruler marker
+        are composited per frame over a copy of this array.
 
         Returns:
             A C-contiguous ``HxWx3`` uint8 RGB array.
@@ -148,19 +161,40 @@ class FrameRenderer:
         ctx = cairo.Context(surface)
 
         lay = self.layout
+        w = float(self._width)
+        h = float(self._height)
 
         # Background fill.
         ctx.set_source_rgb(*self._bg)
         ctx.paint()
 
-        # Full-frame crosshair (vertical + horizontal through center).
+        # Registration geometry: full-frame diagonals (corner to corner).
         ctx.set_source_rgb(*self._fg)
+        ctx.set_line_width(lay.geometry_line_width)
+        ctx.move_to(0.0, 0.0)
+        ctx.line_to(w, h)
+        ctx.stroke()
+        ctx.move_to(w, 0.0)
+        ctx.line_to(0.0, h)
+        ctx.stroke()
+
+        # Centred rectangle sharing the frame's aspect ratio (corners on the
+        # diagonals); a quick visual aspect/centering reference.
+        ctx.rectangle(
+            lay.aspect_rect_left,
+            lay.aspect_rect_top,
+            lay.aspect_rect_width,
+            lay.aspect_rect_height,
+        )
+        ctx.stroke()
+
+        # Full-frame crosshair (vertical + horizontal through center).
         ctx.set_line_width(lay.crosshair_line_width)
         ctx.move_to(lay.cx, 0.0)
-        ctx.line_to(lay.cx, float(self._height))
+        ctx.line_to(lay.cx, h)
         ctx.stroke()
         ctx.move_to(0.0, lay.cy)
-        ctx.line_to(float(self._width), lay.cy)
+        ctx.line_to(w, lay.cy)
         ctx.stroke()
 
         # Clock circle (static; the wand/wipe are drawn per-frame on top).
@@ -170,8 +204,70 @@ class FrameRenderer:
             ctx.arc(lay.cx, lay.cy, lay.clock_radius, 0.0, 2.0 * math.pi)
             ctx.stroke()
 
+        # Audio-ruler scale (baseline + per-frame ticks); labels added below.
+        self._draw_ruler_scale(ctx)
+
         surface.flush()
-        return self._cairo_surface_to_rgb(surface)
+        arr = self._cairo_surface_to_rgb(surface)
+
+        # Ruler frame-index labels (Pillow text on the static array, once).
+        self._draw_ruler_labels(arr)
+        return arr
+
+    def _ruler_tick_x(self, k: int) -> float:
+        """X position of frame tick ``k`` (0..F) on the bottom ruler."""
+        lay = self.layout
+        span = lay.ruler_right - lay.ruler_left
+        return lay.ruler_left + (k / self.schedule.F) * span
+
+    def _draw_ruler_scale(self, ctx: cairo.Context) -> None:
+        """Draw the ruler baseline and per-frame ticks (cairo vectors).
+
+        Ticks run for frame indices ``0..F``; every fifth is a taller major tick.
+        The origin tick (frame 0, where the per-second beep fires) is drawn in the
+        accent color as the sync reference.
+        """
+        lay = self.layout
+        F = self.schedule.F
+
+        # Baseline.
+        ctx.set_source_rgb(*self._fg)
+        ctx.set_line_width(lay.ruler_line_width)
+        ctx.move_to(lay.ruler_left, lay.ruler_y)
+        ctx.line_to(lay.ruler_right, lay.ruler_y)
+        ctx.stroke()
+
+        # Ticks below the baseline.
+        for k in range(F + 1):
+            x = self._ruler_tick_x(k)
+            major = (k % self._ruler_major) == 0
+            tick_h = lay.ruler_tick_major_h if major else lay.ruler_tick_minor_h
+            if k == 0:
+                ctx.set_source_rgb(*self._accent)  # sync origin (beep position)
+            else:
+                ctx.set_source_rgb(*self._fg)
+            ctx.set_line_width(lay.ruler_line_width)
+            ctx.move_to(x, lay.ruler_y)
+            ctx.line_to(x, lay.ruler_y + tick_h)
+            ctx.stroke()
+
+    def _draw_ruler_labels(self, arr: np.ndarray) -> None:
+        """Draw small frame-index labels under the ruler's major ticks (Pillow)."""
+        lay = self.layout
+        F = self.schedule.F
+        image = Image.fromarray(arr, mode="RGB")
+        draw = ImageDraw.Draw(image)
+        for k in range(0, F, self._ruler_major):
+            x = self._ruler_tick_x(k)
+            color = self._accent255 if k == 0 else self._fg255
+            draw.text(
+                (x, lay.ruler_label_y),
+                str(k),
+                font=self._font_ruler,
+                fill=color,
+                anchor="mm",
+            )
+        np.copyto(arr, np.asarray(image))
 
     # ------------------------------------------------------------------ #
     # Per-frame rendering
@@ -281,8 +377,33 @@ class FrameRenderer:
         if not self.config.no_flash:
             self._draw_flash(ctx, i)
 
+        # Audio-ruler playhead: marker on the current frame's tick.
+        self._draw_ruler_marker(ctx, i)
+
         surface.flush()
         return self._cairo_surface_to_rgb(surface)
+
+    def _draw_ruler_marker(self, ctx: cairo.Context, i: int) -> None:
+        """Draw the ruler playhead (a downward triangle) for frame ``i``.
+
+        The marker sits on the tick for ``j = (i - preroll) % F`` -- the current
+        frame within the leader-second -- so it returns to the accent origin tick
+        exactly on the beep/2-pop frame, giving a linear, frame-calibrated cue for
+        measuring any A/V-sync offset against the audible beep.
+        """
+        lay = self.layout
+        sched = self.schedule
+        j = (i - sched.preroll_frames) % sched.F
+        mx = self._ruler_tick_x(j)
+        top = lay.ruler_y - lay.ruler_marker_h
+        hw = lay.ruler_marker_half_w
+
+        ctx.set_source_rgb(*self._accent)
+        ctx.move_to(mx, lay.ruler_y)          # apex on the baseline/tick
+        ctx.line_to(mx - hw, top)
+        ctx.line_to(mx + hw, top)
+        ctx.close_path()
+        ctx.fill()
 
     def _draw_flash(self, ctx: cairo.Context, i: int) -> None:
         """Draw the alignment flash disc for frame ``i``.
@@ -352,10 +473,12 @@ class FrameRenderer:
                     anchor="mm",
                 )
 
-        # Frame counter "j/(F-1)" top-center.
+        # Frame counter, top-left, zero-padded numerator over the fractional fps
+        # (e.g. "07/23.976") so near-identical rates stay distinguishable.
         if not cfg.no_counter:
-            j, denom = sched.counter_at(i)
-            text = f"{j}/{denom}"
+            j, max_index = sched.counter_at(i)
+            width = len(str(max_index))
+            text = f"{j:0{width}d}/{self._fps_display}"
             self._draw_centered_text(
                 draw,
                 text,
@@ -363,10 +486,10 @@ class FrameRenderer:
                 lay.counter_center_x,
                 lay.counter_baseline_y,
                 self._fg255,
-                anchor="mm",
+                anchor="lm",  # left-anchored in the top-left corner
             )
 
-        # Digital timer bottom-center.
+        # Digital (ms) timer, top-right.
         if not cfg.no_timer:
             text = self._format_timer(i)
             self._draw_centered_text(
@@ -376,7 +499,7 @@ class FrameRenderer:
                 lay.timer_center_x,
                 lay.timer_baseline_y,
                 self._fg255,
-                anchor="mm",
+                anchor="rm",  # right-anchored in the top-right corner
             )
 
         # Optional timecode burn-in (top-left region).
@@ -530,8 +653,29 @@ class FrameRenderer:
 
 
 # ---------------------------------------------------------------------------
-# Module-level timecode helpers (self-contained; non-drop-frame)
+# Module-level helpers (self-contained; deterministic)
 # ---------------------------------------------------------------------------
+
+
+def _format_fps(num: int, den: int) -> str:
+    """Format a rational fps as a compact decimal for the counter denominator.
+
+    Integer rates render without a fractional part (``24/1`` -> ``"24"``); broadcast
+    rates keep enough precision to stay distinct (``24000/1001`` -> ``"23.976"``,
+    ``30000/1001`` -> ``"29.97"``, ``60000/1001`` -> ``"59.94"``). Trailing zeros
+    are trimmed.
+
+    Args:
+        num: Frame-rate numerator.
+        den: Frame-rate denominator.
+
+    Returns:
+        The fps as a trimmed decimal string.
+    """
+    if den == 1:
+        return str(num)
+    text = f"{num / den:.3f}".rstrip("0").rstrip(".")
+    return text
 
 
 def _frames_to_tc(frames: int, num: int, den: int) -> str:

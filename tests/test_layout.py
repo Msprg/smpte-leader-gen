@@ -1,8 +1,9 @@
 """Unit tests for :mod:`smpte_leader_gen.layout` (CONTRACT.md §11).
 
-Verify the four resolution presets: ``clock_radius / unit`` ~= 0.40, all sizes
-positive, the big-number center equals ``(W/2, H/2)``, the counter sits near the top
-and the timer near the bottom, and the layout is pure/deterministic.
+Verify the four resolution presets: ``clock_radius / unit`` ~= 0.30, all sizes
+positive, the big-number center equals ``(W/2, H/2)``, the counter sits top-left and
+the timer top-right, the registration rectangle is centred with the frame's aspect
+ratio, the bottom ruler is well-formed, and the layout is pure/deterministic.
 """
 from __future__ import annotations
 
@@ -24,7 +25,7 @@ PRESETS: list[tuple[int, int]] = [
 @pytest.mark.parametrize(("width", "height"), PRESETS)
 def test_clock_radius_ratio(width: int, height: int) -> None:
     layout = compute_layout(width, height)
-    assert layout.clock_radius / layout.unit == pytest.approx(0.40)
+    assert layout.clock_radius / layout.unit == pytest.approx(0.30)
 
 
 @pytest.mark.parametrize(("width", "height"), PRESETS)
@@ -71,21 +72,36 @@ def test_all_sizes_positive(width: int, height: int) -> None:
         layout.burnin_baseline_y,
         layout.burnin_center_x,
         layout.wand_line_width,
+        layout.geometry_line_width,
+        layout.aspect_rect_left,
+        layout.aspect_rect_top,
+        layout.aspect_rect_width,
+        layout.aspect_rect_height,
+        layout.ruler_y,
+        layout.ruler_left,
+        layout.ruler_right,
+        layout.ruler_line_width,
+        layout.ruler_tick_minor_h,
+        layout.ruler_tick_major_h,
+        layout.ruler_label_font_px,
+        layout.ruler_label_y,
+        layout.ruler_marker_h,
+        layout.ruler_marker_half_w,
     ]
     for value in positive_fields:
         assert value > 0
 
 
 @pytest.mark.parametrize(("width", "height"), PRESETS)
-def test_counter_near_top_timer_near_bottom(width: int, height: int) -> None:
+def test_counter_top_left_timer_top_right(width: int, height: int) -> None:
     layout = compute_layout(width, height)
-    # Counter sits in the top region, timer in the bottom region.
+    # Both readouts are in the top region now.
     assert layout.counter_baseline_y < height * 0.5
-    assert layout.timer_baseline_y > height * 0.5
-    assert layout.counter_baseline_y < layout.timer_baseline_y
-    # Both centered horizontally.
-    assert layout.counter_center_x == pytest.approx(width / 2.0)
-    assert layout.timer_center_x == pytest.approx(width / 2.0)
+    assert layout.timer_baseline_y < height * 0.5
+    assert layout.counter_baseline_y == pytest.approx(layout.timer_baseline_y)
+    # Counter to the left of center, timer to the right.
+    assert layout.counter_center_x < width / 2.0
+    assert layout.timer_center_x > width / 2.0
 
 
 @pytest.mark.parametrize(("width", "height"), PRESETS)
@@ -96,8 +112,8 @@ def test_documented_ratios(width: int, height: int) -> None:
     assert layout.wand_line_width == max(2.0, 0.006 * unit)
     assert layout.crosshair_line_width == max(1.0, 0.0015 * unit)
     assert layout.number_font_px == round(0.5 * layout.clock_radius)
-    assert layout.counter_font_px == round(0.05 * unit)
-    assert layout.timer_font_px == round(0.05 * unit)
+    assert layout.counter_font_px == round(0.045 * unit)
+    assert layout.timer_font_px == round(0.045 * unit)
     assert layout.flash_radius == pytest.approx(0.05 * unit)
     assert layout.twopop_flash_radius == pytest.approx(1.6 * layout.flash_radius)
 
@@ -113,12 +129,37 @@ def test_flash_disc_fixed_right_middle(width: int, height: int) -> None:
 
 
 @pytest.mark.parametrize(("width", "height"), PRESETS)
-def test_burnin_top_left(width: int, height: int) -> None:
+def test_burnin_top_center(width: int, height: int) -> None:
     layout = compute_layout(width, height)
-    assert layout.burnin_center_x == pytest.approx(0.16 * width)
-    assert layout.burnin_baseline_y == pytest.approx(0.08 * height)
-    # Burn-in is left of frame center.
-    assert layout.burnin_center_x < width / 2.0
+    # Burn-in is centred in the top row (between the counter and timer).
+    assert layout.burnin_center_x == pytest.approx(width / 2.0)
+    assert layout.burnin_baseline_y == pytest.approx(0.085 * height)
+
+
+@pytest.mark.parametrize(("width", "height"), PRESETS)
+def test_aspect_rect_is_centered_with_frame_aspect(width: int, height: int) -> None:
+    layout = compute_layout(width, height)
+    # Same aspect ratio as the frame.
+    assert layout.aspect_rect_width / layout.aspect_rect_height == pytest.approx(
+        width / height
+    )
+    # Centred: equal margins on each side.
+    assert layout.aspect_rect_left == pytest.approx(width - layout.aspect_rect_left - layout.aspect_rect_width)
+    assert layout.aspect_rect_top == pytest.approx(height - layout.aspect_rect_top - layout.aspect_rect_height)
+    # Strictly inside the frame.
+    assert 0 < layout.aspect_rect_left < width / 2.0
+    assert layout.aspect_rect_width < width
+
+
+@pytest.mark.parametrize(("width", "height"), PRESETS)
+def test_ruler_geometry(width: int, height: int) -> None:
+    layout = compute_layout(width, height)
+    # Ruler is near the bottom and spans a centred horizontal band.
+    assert layout.ruler_y > height * 0.5
+    assert 0 < layout.ruler_left < layout.ruler_right < width
+    # Labels sit below the baseline; major ticks are taller than minor.
+    assert layout.ruler_label_y > layout.ruler_y
+    assert layout.ruler_tick_major_h > layout.ruler_tick_minor_h
 
 
 def test_layout_is_frozen() -> None:
