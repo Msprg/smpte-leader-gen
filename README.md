@@ -247,6 +247,24 @@ smpte-leader-gen --fps 24 --bpm 120 --time-sig 4/4 \
   --tail-seconds 1.0 --end-align bar -o leader_endbar.mov
 ```
 
+When `--end-align` is active, a small **readout appears in the lower-left** with
+the metrics for nudging the seam to sample-perfect alignment:
+
+```
+END-ALIGN beat  128 BPM  23.976 fps
+beat = 11.24 f / 468.8 ms / 22500 smp
+nudge leader LEFT 0.10 f / 4.3 ms / 208 smp
+```
+
+The third line is the **sub-frame residual**: `--end-align` lands the file end on
+the *nearest whole frame* to the exact beat, and this is the leftover the frame
+grid cannot represent. With your music butted to the leader's end, nudging the
+leader by that amount (here 208 samples / ~0.1 frame **left** — the direction and
+size vary per render) makes the interval from the leader's last beat click to the
+music's downbeat exactly one full period. It is always sub-frame, so in practice
+the seam is already frame-accurate; the readout tells you the exact remainder (and
+its direction) if you want it sample-perfect.
+
 By default the boundary beat itself is **silent** — the file ends exactly on it,
 leaving that downbeat for your music to take over. Add **`--end-cue`** to instead
 **sound** that boundary beat (the first beat of the next period) as an audio

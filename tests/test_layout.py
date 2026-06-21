@@ -93,6 +93,10 @@ def test_all_sizes_positive(width: int, height: int) -> None:
         layout.ruler_label_y,
         layout.ruler_marker_h,
         layout.ruler_marker_half_w,
+        layout.syncinfo_font_px,
+        layout.syncinfo_left_x,
+        layout.syncinfo_top_y,
+        layout.syncinfo_line_h,
     ]
     for value in positive_fields:
         assert value > 0

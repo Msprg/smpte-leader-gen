@@ -72,6 +72,11 @@ class Layout:
     ruler_label_y: float
     ruler_marker_h: float
     ruler_marker_half_w: float
+    # bottom-left end-alignment / nudge info block (multi-line, left-aligned)
+    syncinfo_font_px: int
+    syncinfo_left_x: float
+    syncinfo_top_y: float
+    syncinfo_line_h: float
 
 
 def compute_layout(width: int, height: int) -> Layout:
@@ -193,6 +198,13 @@ def compute_layout(width: int, height: int) -> Layout:
     ruler_marker_h = 0.022 * height
     ruler_marker_half_w = 0.010 * unit
 
+    # End-alignment / nudge info: a small multi-line block in the lower-left band
+    # between the inner aspect rectangle's bottom edge and the audio ruler.
+    syncinfo_font_px = round(0.020 * unit)
+    syncinfo_left_x = 0.045 * width
+    syncinfo_top_y = 0.812 * height
+    syncinfo_line_h = 0.024 * height
+
     return Layout(
         width=width,
         height=height,
@@ -240,4 +252,8 @@ def compute_layout(width: int, height: int) -> Layout:
         ruler_label_y=ruler_label_y,
         ruler_marker_h=ruler_marker_h,
         ruler_marker_half_w=ruler_marker_half_w,
+        syncinfo_font_px=syncinfo_font_px,
+        syncinfo_left_x=syncinfo_left_x,
+        syncinfo_top_y=syncinfo_top_y,
+        syncinfo_line_h=syncinfo_line_h,
     )

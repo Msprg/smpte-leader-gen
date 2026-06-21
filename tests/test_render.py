@@ -178,6 +178,41 @@ def test_static_layer_has_ruler_near_bottom(renderer: FrameRenderer) -> None:
     assert band.std() > 0
 
 
+def test_sync_info_absent_without_end_align(renderer: FrameRenderer) -> None:
+    """The lower-left nudge readout is None unless --end-align is active."""
+    assert renderer._sync_info_lines is None  # noqa: SLF001
+
+
+def test_sync_info_present_and_shapes_with_end_align() -> None:
+    """With --end-align + bpm, the readout is computed and drawn into the static
+    layer's lower-left band (so it does not touch the black tail)."""
+    cfg = build_config(
+        fps="23.976", resolution="720p", output="o.mov",
+        lead_seconds=4, tail_seconds=2.0, bpm=128, time_sig="2/4",
+        subdivision=2, end_align="beat",
+    )
+    sched = build_schedule(
+        fps=cfg.fps, sample_rate=cfg.sample_rate,
+        frames_per_block_override=cfg.frames_per_block,
+        lead_seconds=cfg.lead_seconds, tail_frames=cfg.tail_frames,
+        preroll_frames=cfg.preroll_frames, beep_frames=cfg.beep_frames,
+        persecond_beep=not cfg.no_persecond_beep, twopop=not cfg.no_twopop,
+        count_style=cfg.count_style,
+    )
+    r = FrameRenderer(cfg, sched)
+    lines = r._sync_info_lines  # noqa: SLF001
+    assert lines is not None and len(lines) == 3
+    assert "END-ALIGN beat" in lines[0]
+    assert "128 BPM" in lines[0]
+    assert lines[2].startswith(("nudge leader", "seam aligned"))
+    # The lower-left band carries the text (non-background pixels there).
+    lay = r.layout
+    y0 = int(lay.syncinfo_top_y - lay.syncinfo_line_h)
+    y1 = int(lay.syncinfo_top_y + 3 * lay.syncinfo_line_h)
+    band = r._static[y0:y1, : int(lay.cx), :]  # noqa: SLF001
+    assert band.std() > 0
+
+
 def test_cairo_surface_to_rgb_shape(renderer: FrameRenderer) -> None:
     """The static layer round-trips to a contiguous HxWx3 uint8 RGB array."""
     static = renderer._static  # noqa: SLF001 (test inspects internals)

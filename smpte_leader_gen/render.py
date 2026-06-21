@@ -24,6 +24,7 @@ import cairo
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from .audio import _resolve_metronome_start
 from .config import Config
 from .layout import Layout, compute_layout
 from .timing import Schedule
@@ -139,6 +140,10 @@ class FrameRenderer:
         # Duration of one frame in milliseconds, for the ruler's ms scale.
         self._frame_ms = 1000.0 * schedule.fps.denominator / schedule.fps.numerator
 
+        # Lower-left end-alignment / nudge info block (None when --end-align off).
+        self._font_syncinfo = _load_font(FONT_REGULAR, self.layout.syncinfo_font_px)
+        self._sync_info_lines = self._compute_sync_info()
+
         # Build and cache the static RGB background.
         self._static: np.ndarray = self._build_static()
 
@@ -229,6 +234,10 @@ class FrameRenderer:
 
         # Ruler frame-index labels (Pillow text on the static array, once).
         self._draw_ruler_labels(arr)
+
+        # Lower-left end-alignment / nudge info (static; only with --end-align).
+        if self._sync_info_lines:
+            self._draw_sync_info(arr)
         return arr
 
     def _ruler_tick_range(self) -> range:
@@ -317,6 +326,87 @@ class FrameRenderer:
                 font=self._font_ruler,
                 fill=color,
                 anchor="mm",
+            )
+        np.copyto(arr, np.asarray(image))
+
+    def _compute_sync_info(self) -> list[str] | None:
+        """Build the lower-left end-alignment / nudge readout, or ``None``.
+
+        Returns ``None`` unless ``--end-align`` is active (it needs a metronome
+        grid). Otherwise it computes, for the alignment unit (beat/bar/sub):
+
+          * the unit period in frames / ms / samples, and
+          * the signed nudge to apply to the **leader** so that, with the music
+            butted to the leader's end, the interval from the leader's last beat
+            click to the music's downbeat is exactly one full period.
+
+        The nudge is ``end_sample - boundary_sample`` (``+`` = move the leader
+        right, ``-`` = left). It is always sub-frame, because ``--end-align`` lands
+        the end on the nearest whole frame to the exact beat; this readout is the
+        leftover the frame grid could not represent.
+        """
+        cfg = self.config
+        sched = self.schedule
+        if cfg.end_align is None or cfg.bpm is None:
+            return None
+
+        sr = sched.sample_rate
+        bpm = cfg.bpm
+        fpsf = float(sched.fps)
+        spf = sr / fpsf  # samples per frame
+
+        # Period (in samples) of the alignment unit.
+        if cfg.end_align == "bar":
+            unit_samples = sr * 60.0 * cfg.time_sig_beats / bpm
+        elif cfg.end_align == "subdivision":
+            unit_samples = sr * 60.0 / (bpm * cfg.subdivision)
+        else:  # "beat"
+            unit_samples = sr * 60.0 / bpm
+        if unit_samples <= 0:
+            return None
+
+        start = _resolve_metronome_start(sched, cfg)
+        end = sched.total_samples
+        # Exact (sample-accurate) onset of the grid boundary nearest the end.
+        m = round((end - start) / unit_samples)
+        boundary = start + round(m * unit_samples)
+
+        nudge = end - boundary  # +right / -left to complete the last period
+        nudge_f = nudge / spf
+        nudge_ms = nudge * 1000.0 / sr
+
+        unit = cfg.end_align
+        line1 = f"END-ALIGN {unit}  {bpm:g} BPM  {self._fps_display} fps"
+        line2 = (
+            f"{unit} = {unit_samples / spf:.2f} f / "
+            f"{unit_samples * 1000.0 / sr:.1f} ms / {round(unit_samples)} smp"
+        )
+        if nudge == 0:
+            line3 = "seam aligned exactly on the beat (0 smp)"
+        else:
+            direction = "RIGHT" if nudge > 0 else "LEFT"
+            line3 = (
+                f"nudge leader {direction} {abs(nudge_f):.2f} f / "
+                f"{abs(nudge_ms):.1f} ms / {abs(nudge)} smp"
+            )
+        return [line1, line2, line3]
+
+    def _draw_sync_info(self, arr: np.ndarray) -> None:
+        """Draw the lower-left end-alignment / nudge block (Pillow, left-aligned)."""
+        lines = self._sync_info_lines
+        if not lines:
+            return
+        lay = self.layout
+        image = Image.fromarray(arr, mode="RGB")
+        draw = ImageDraw.Draw(image)
+        for idx, text in enumerate(lines):
+            y = lay.syncinfo_top_y + idx * lay.syncinfo_line_h
+            draw.text(
+                (lay.syncinfo_left_x, y),
+                text,
+                font=self._font_syncinfo,
+                fill=self._fg255,
+                anchor="lm",
             )
         np.copyto(arr, np.asarray(image))
 
