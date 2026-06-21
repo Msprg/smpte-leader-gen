@@ -259,8 +259,9 @@ smpte-leader-gen --fps 24 --bpm 120 --time-sig 4/4 \
 ```
 
 Whenever the metronome is active (`--bpm`), a small **bold turquoise readout
-appears in the lower-left** (hugging the left frame border, above the audio ruler)
-with the metrics for aligning the seam to the **bar downbeat**:
+appears on the left** (hugging the left frame border, its first line just below
+the horizontal centre line) with the metrics for aligning the seam to the **bar
+downbeat**:
 
 ```
 METRONOME 128 BPM  2/4  23.976 fps
@@ -296,7 +297,7 @@ smpte-leader-gen --fps 24 --bpm 120 --time-sig 4/4 \
 |---|---|---|---|
 | `--count-style` | choice | `full` | `full` (L→1) or `smpte` (fixed 8→2; requires `L ≥ 8`). |
 | `--bg-color` | hex | `#202020` | Background color. |
-| `--fg-color` | hex | `#E0E0E0` | Foreground (clock/lines/most text; the lower-left metronome readout is a fixed turquoise). |
+| `--fg-color` | hex | `#E0E0E0` | Foreground (clock/lines/most text; the left-side metronome readout is a fixed turquoise). |
 | `--accent-color` | hex | `#FF3030` | Flash disc / accent. |
 | `--show-timecode-burnin` | flag | off | On-screen TC overlay (separate from embedded TC). |
 | `--no-clock` | flag | off | Hide the clock + wand. |

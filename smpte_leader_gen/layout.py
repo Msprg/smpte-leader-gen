@@ -220,12 +220,12 @@ def compute_layout(width: int, height: int) -> Layout:
     ruler_marker_h = 0.022 * height
     ruler_marker_half_w = 0.010 * unit
 
-    # End-alignment / nudge info: a small multi-line block tucked into the
-    # lower-left, hugging the left frame border and sitting well above the audio
-    # ruler so it does not feel crowded against the timeline.
+    # End-alignment / nudge info: a small multi-line block hugging the left frame
+    # border, with its first line just below the horizontal centre line (clear of
+    # the clock/number to its right, which start well past where the text ends).
     syncinfo_font_px = round(0.020 * unit)
     syncinfo_left_x = 0.025 * width
-    syncinfo_top_y = 0.780 * height
+    syncinfo_top_y = 0.520 * height
     syncinfo_line_h = 0.024 * height
 
     # Top-center metronome animation: an inverted pendulum (pivot low, bob high,

@@ -47,7 +47,7 @@ FONT_BOLD = str(_FONT_DIR / "DejaVuSansMono-Bold.ttf")
 #: (radians). The bob reaches +-this angle exactly on each beat.
 _METRO_SWING_RAD = math.radians(32.0)
 
-#: Fixed turquoise fill for the lower-left metronome / nudge readout. Drawn bold in
+#: Fixed turquoise fill for the left-side metronome / nudge readout. Drawn bold in
 #: this colour so the glyphs stay legible where they overlap the (near-white,
 #: #E0E0E0) registration rectangle and diagonals -- the bold weight reads across the
 #: thin stroke while the body of the text sits on the dark background. Independent of
@@ -154,7 +154,7 @@ class FrameRenderer:
         # Duration of one frame in milliseconds, for the ruler's ms scale.
         self._frame_ms = 1000.0 * schedule.fps.denominator / schedule.fps.numerator
 
-        # Lower-left metronome / nudge readout (None unless --bpm is set).
+        # Left-side metronome / nudge readout (None unless --bpm is set).
         # Bold so it stays readable where it overlaps the registration rectangle.
         self._font_syncinfo = _load_font(FONT_BOLD, self.layout.syncinfo_font_px)
         self._sync_info_lines = self._compute_sync_info()
@@ -255,7 +255,7 @@ class FrameRenderer:
         # Ruler frame-index labels (Pillow text on the static array, once).
         self._draw_ruler_labels(arr)
 
-        # Lower-left metronome / nudge readout (static; only when --bpm is set).
+        # Left-side metronome / nudge readout (static; only when --bpm is set).
         if self._sync_info_lines:
             self._draw_sync_info(arr)
         return arr
@@ -371,7 +371,7 @@ class FrameRenderer:
         np.copyto(arr, np.asarray(image))
 
     def _compute_sync_info(self) -> list[str] | None:
-        """Build the lower-left metronome / bar-downbeat nudge readout, or ``None``.
+        """Build the left-side metronome / bar-downbeat nudge readout, or ``None``.
 
         Returns ``None`` unless the metronome is active (``--bpm``). Otherwise it
         always references the **bar downbeat** (regardless of ``--end-align``) and
@@ -429,7 +429,7 @@ class FrameRenderer:
         return [line1, line2, line3]
 
     def _draw_sync_info(self, arr: np.ndarray) -> None:
-        """Draw the lower-left end-alignment / nudge block (Pillow, left-aligned)."""
+        """Draw the left-side end-alignment / nudge block (Pillow, left-aligned)."""
         lines = self._sync_info_lines
         if not lines:
             return

@@ -299,7 +299,7 @@ def test_ruler_centre_zero_stays_legible_at_high_fps() -> None:
 
 def test_sync_info_is_bold_turquoise() -> None:
     """The metronome readout is drawn with the bold font in turquoise, hugging the
-    lower-left border and sitting above the ruler."""
+    left border with its first line just below the horizontal centre line."""
     cfg = build_config(
         fps="24", resolution="1080p", output="o.mov", lead_seconds=4,
         tail_seconds=2.0, bpm=120, time_sig="4/4",
@@ -312,12 +312,12 @@ def test_sync_info_is_bold_turquoise() -> None:
     band = r._static.astype(np.int16)  # noqa: SLF001
     ys, xs = np.where(np.abs(band - target).sum(axis=2) < 60)
     assert len(ys) > 0  # turquoise text present
-    # Hugs the left border at the raised position: ink starts near the new
-    # syncinfo_left_x (0.025 w), tighter than the old 0.045 w, and the block sits
-    # higher than the old 0.812 h bottom. Bounds chosen to FAIL if either the x or
-    # y move were reverted, while staying clear of the ruler.
+    # Hugs the left border (ink starts near the new syncinfo_left_x = 0.025 w) and
+    # its first line sits just below the horizontal centre line. Bounds are chosen
+    # to FAIL if the x move or the raised y position were reverted.
     assert xs.min() < cfg.width * 0.04          # new ~0.026 w passes; old 0.045 w fails
-    assert ys.max() < cfg.height * 0.85         # new bottom ~0.84 h passes; old ~0.87 h fails
+    assert cfg.height * 0.50 < ys.min() < cfg.height * 0.55  # first line just below centre
+    assert ys.max() < cfg.height * 0.62         # block stays upper-middle; old 0.78/0.81 fail
     assert ys.max() < r.layout.ruler_y          # never reaches the ruler
     assert abs(xs.min() - r.layout.syncinfo_left_x) < cfg.width * 0.01
 
