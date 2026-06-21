@@ -182,10 +182,11 @@ def compute_layout(width: int, height: int) -> Layout:
     # hairline diagonals so the video extent is clearly visible.
     rect_line_width = max(2.0, 0.003 * unit)
 
-    # Full-frame border rectangle marking the exact video extent. Inset by one
-    # line width so the whole stroke stays visible (a rect at the literal edge
-    # would have half its width clipped off-frame).
-    border_inset = rect_line_width
+    # Full-frame border rectangle marking the exact video extent. The stroke is
+    # centred on the rect path, so insetting the path by HALF the line width puts
+    # the stroke's outer edge exactly on the frame edge: the border hugs the very
+    # edge with no padding, and no part of the stroke is clipped off-frame.
+    border_inset = rect_line_width / 2.0
     border_rect_left = border_inset
     border_rect_top = border_inset
     border_rect_width = width - 2.0 * border_inset

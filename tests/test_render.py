@@ -30,7 +30,7 @@ from smpte_leader_gen.timing import Schedule, build_schedule
 # sha256 of the packed RGB24 bytes of the 2-pop ("2") frame, 1920x1080 @ 24 fps,
 # lead=8, tail=2, preroll=0, count_style=full. Baked from this environment.
 GOLDEN_2POP_SHA256 = (
-    "b5737dd2a6dd00a5ece586c1720b598b3f824b2f31c070bfe3fc7a4f8efea525"
+    "b573ad0371a3b3eaa8203930668d64cd41b3affbecfd50eb6709334482024f87"
 )
 
 
@@ -173,6 +173,24 @@ def test_ruler_marker_moves_within_leader_second(renderer: FrameRenderer) -> Non
     # because the playhead marker and wand have advanced.
     assert sched.number_at(base + 3) == sched.number_at(base + 8)
     assert renderer.render_frame(base + 3) != renderer.render_frame(base + 8)
+
+
+def test_border_hugs_frame_edge(renderer: FrameRenderer) -> None:
+    """The full-frame border stroke reaches the very edge of the frame (no padding
+    before the outline) on all four sides."""
+    static = renderer._static  # noqa: SLF001
+    cfg = renderer.config
+    fg = np.array(_rgbf_to_rgb255(cfg.fg_color), dtype=np.int16)
+
+    def is_fg(px: np.ndarray) -> bool:
+        return bool(np.abs(px.astype(np.int16) - fg).sum() < 40)
+
+    mid_x, mid_y = cfg.width // 2, cfg.height // 2
+    # Edge pixel (row/col 0 and last) is the bright border, not background.
+    assert is_fg(static[mid_y, 0])               # left edge
+    assert is_fg(static[mid_y, cfg.width - 1])    # right edge
+    assert is_fg(static[0, mid_x])               # top edge
+    assert is_fg(static[cfg.height - 1, mid_x])   # bottom edge
 
 
 def test_static_layer_has_ruler_near_bottom(renderer: FrameRenderer) -> None:

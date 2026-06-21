@@ -171,11 +171,19 @@ def test_aspect_rect_is_centered_with_frame_aspect(width: int, height: int) -> N
 @pytest.mark.parametrize(("width", "height"), PRESETS)
 def test_border_rect_spans_full_frame(width: int, height: int) -> None:
     layout = compute_layout(width, height)
-    # Border hugs the edges (inset by at most a line width) and is much larger
-    # than the inner aspect rectangle.
-    assert layout.border_rect_left == pytest.approx(layout.rect_line_width)
-    assert layout.border_rect_width == pytest.approx(width - 2 * layout.rect_line_width)
-    assert layout.border_rect_height == pytest.approx(height - 2 * layout.rect_line_width)
+    # The path is inset by HALF a line width so the stroke's outer edge lands
+    # exactly on the frame edge (no padding), with the whole stroke on-frame.
+    assert layout.border_rect_left == pytest.approx(layout.rect_line_width / 2.0)
+    assert layout.border_rect_top == pytest.approx(layout.rect_line_width / 2.0)
+    assert layout.border_rect_width == pytest.approx(width - layout.rect_line_width)
+    assert layout.border_rect_height == pytest.approx(height - layout.rect_line_width)
+    # The stroke reaches both edges: outer edge at 0 / width, inner edge one line
+    # width in.
+    assert layout.border_rect_left - layout.rect_line_width / 2.0 == pytest.approx(0.0)
+    assert (
+        layout.border_rect_left + layout.border_rect_width + layout.rect_line_width / 2.0
+        == pytest.approx(width)
+    )
     assert layout.border_rect_width > layout.aspect_rect_width
     assert layout.border_rect_height > layout.aspect_rect_height
 
