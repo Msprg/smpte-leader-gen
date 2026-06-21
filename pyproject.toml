@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smpte-leader-gen"
+version = "0.1.0"
+description = "AV-Sync Countdown Leader Generator (SMPTE-style countdown clock for A/V sync testing)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "brainit.sk" }]
+keywords = ["smpte", "leader", "countdown", "av-sync", "ffmpeg", "test-pattern", "broadcast"]
+classifiers = [
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Environment :: Console",
+]
+dependencies = [
+    "numpy>=1.26",
+    "pycairo>=1.25",
+    "pillow>=10.0",
+    "click>=8.1",
+    "pydantic>=2.0",
+    "soundfile>=0.12",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+smpte-leader-gen = "smpte_leader_gen.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/brainit-sk/smpte-leader-gen"
+
+[tool.setuptools]
+packages = ["smpte_leader_gen"]
+
+[tool.setuptools.package-data]
+smpte_leader_gen = ["fonts/*.ttf"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
