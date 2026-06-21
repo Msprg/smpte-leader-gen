@@ -47,6 +47,11 @@ FADE_MS: float = 1.0
 #: down to this peak if it would otherwise exceed it.
 _PEAK_CEILING_DBFS: float = -1.0
 
+#: Master gain applied to the final mix (2.0 == +6.02 dB). It is applied only to
+#: the extent the available headroom allows: the effective gain is
+#: ``min(_MASTER_GAIN, ceiling / peak)`` so the output never exceeds the ceiling.
+_MASTER_GAIN: float = 2.0
+
 
 def dbfs_to_amp(dbfs: float) -> float:
     """Convert a level in dBFS to a linear amplitude (full-scale peak = 1.0).
@@ -274,11 +279,15 @@ def build_audio(schedule: Schedule, config: Config) -> tuple[np.ndarray, float]:
     """Build the final stereo mix and report the applied peak level.
 
     The beep track and the metronome track are summed into a mono signal, then
-    duplicated into both channels (centered). If the mono peak would exceed
-    ``-1 dBFS`` the whole mix is scaled down so its peak is exactly ``-1 dBFS`` and
-    a :class:`UserWarning` is emitted via :func:`warnings.warn` (do not clip
-    silently). The returned buffer is exactly ``schedule.total_samples`` long
-    (the component tracks are already that length; this is enforced defensively).
+    a **master gain** is applied: the mix is boosted by up to ``_MASTER_GAIN``
+    (2.0 == +6 dB), but only as far as the available headroom permits -- the
+    effective gain is ``min(_MASTER_GAIN, ceiling / peak)`` so the output peak
+    never exceeds ``-1 dBFS``. If the *raw* mix already exceeds the ceiling the
+    effective gain is below unity (the mix is scaled down to exactly ``-1 dBFS``)
+    and a :class:`UserWarning` is emitted via :func:`warnings.warn` (do not clip
+    silently). The mono signal is then duplicated into both channels (centered).
+    The returned buffer is exactly ``schedule.total_samples`` long (the component
+    tracks are already that length; this is enforced defensively).
 
     Args:
         schedule: The resolved timing plan (provides the exact total length).
@@ -302,16 +311,22 @@ def build_audio(schedule: Schedule, config: Config) -> tuple[np.ndarray, float]:
     peak = float(np.max(np.abs(mono))) if mono.size else 0.0
     ceiling = dbfs_to_amp(_PEAK_CEILING_DBFS)
 
-    if peak > ceiling:
-        scale = ceiling / peak
-        mono = mono * scale
-        warnings.warn(
-            f"audio mix peak {_amp_to_dbfs(peak):.2f} dBFS exceeded "
-            f"{_PEAK_CEILING_DBFS:.1f} dBFS; scaled down by "
-            f"{20.0 * np.log10(scale):.2f} dB to prevent clipping.",
-            UserWarning,
-            stacklevel=2,
-        )
+    if peak > 0.0:
+        # Boost by up to _MASTER_GAIN, but never past the ceiling. When the raw
+        # mix already exceeds the ceiling this gain drops below unity (attenuation).
+        headroom_gain = ceiling / peak
+        gain = min(_MASTER_GAIN, headroom_gain)
+        mono = mono * gain
+        if headroom_gain < 1.0:
+            # Raw mix was hotter than the ceiling: we attenuated to prevent
+            # clipping -- surface that (do not clip silently).
+            warnings.warn(
+                f"audio mix peak {_amp_to_dbfs(peak):.2f} dBFS exceeded "
+                f"{_PEAK_CEILING_DBFS:.1f} dBFS; scaled down by "
+                f"{20.0 * np.log10(gain):.2f} dB to prevent clipping.",
+                UserWarning,
+                stacklevel=2,
+            )
         applied_peak = float(np.max(np.abs(mono))) if mono.size else 0.0
     else:
         applied_peak = peak

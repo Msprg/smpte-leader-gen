@@ -380,6 +380,38 @@ def test_no_warning_when_below_ceiling():
     assert not any(issubclass(w.category, UserWarning) for w in caught)
 
 
+def test_master_gain_doubles_when_headroom_available():
+    # A quiet mix (-12 dBFS beep) has ample headroom: the master gain doubles it
+    # (+6 dB) exactly, and the result stays under the -1 dBFS ceiling.
+    config = make_config(fps="24", lead_seconds=8, beep_level_dbfs=-12.0)
+    schedule = make_schedule(config)
+    raw_peak = float(np.max(np.abs(synth_beep_track(schedule, config))))
+    stereo, peak_dbfs = build_audio(schedule, config)
+    out_peak = float(np.max(np.abs(stereo)))
+    ceiling = dbfs_to_amp(-1.0)
+    assert out_peak == pytest.approx(2.0 * raw_peak, rel=1e-9)
+    assert out_peak <= ceiling + 1e-9
+    assert peak_dbfs == pytest.approx(-6.0, abs=0.05)  # -12 dBFS + 6 dB
+
+
+def test_master_gain_capped_at_ceiling_with_partial_headroom():
+    # A hot-but-legal mix (-3 dBFS beep) cannot double without clipping, so the
+    # gain is capped: the output sits exactly at the ceiling, with no warning
+    # (the raw mix was below the ceiling, so nothing was attenuated).
+    config = make_config(fps="24", lead_seconds=8, beep_level_dbfs=-3.0)
+    schedule = make_schedule(config)
+    raw_peak = float(np.max(np.abs(synth_beep_track(schedule, config))))
+    ceiling = dbfs_to_amp(-1.0)
+    assert raw_peak < ceiling  # legal on its own
+    assert 2.0 * raw_peak > ceiling  # but doubling would clip
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        stereo, peak_dbfs = build_audio(schedule, config)
+    assert np.max(np.abs(stereo)) == pytest.approx(ceiling, rel=1e-9)
+    assert peak_dbfs == pytest.approx(-1.0, abs=1e-6)
+    assert not any(issubclass(w.category, UserWarning) for w in caught)
+
+
 # ---------------------------------------------------------------------------
 # WAV writing
 # ---------------------------------------------------------------------------
