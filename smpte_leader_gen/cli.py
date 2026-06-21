@@ -66,6 +66,7 @@ _PASSTHROUGH_PARAMS: tuple[str, ...] = (
     "metronome_click_freq",
     "metronome_sub_freq",
     "end_align",
+    "end_cue",
     "count_style",
     "bg_color",
     "fg_color",
@@ -195,6 +196,10 @@ def _format_duration(total_frames: int, fps_num: int, fps_den: int) -> str:
               help="Extend the black tail so the output ends exactly on the next "
                    "metronome beat/bar/subdivision (requires --bpm), so butt-joined "
                    "music continues the click grid.")
+@click.option("--end-cue", is_flag=True, default=False,
+              help="With --end-align, sound the final boundary beat as an audio "
+                   "cue and end just after it (instead of ending silently on the "
+                   "boundary).")
 # ---- visual ---------------------------------------------------------------
 @click.option("--count-style", type=click.Choice(["full", "smpte"]),
               default="full", show_default=True,
@@ -338,6 +343,7 @@ def _print_verbose_preamble(config: Any) -> None:
     click.echo(f"  count_style    = {config.count_style}")
     click.echo(f"  bpm            = {config.bpm}")
     click.echo(f"  end_align      = {config.end_align}")
+    click.echo(f"  end_cue        = {config.end_cue}")
     click.echo(f"  profile        = {config.profile}")
     click.echo(f"  container      = {config.container}")
     click.echo(f"  sample_rate    = {config.sample_rate}")

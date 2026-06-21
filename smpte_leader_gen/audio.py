@@ -26,6 +26,7 @@ from .timing import Schedule, frame_start_sample
 
 __all__ = [
     "FADE_MS",
+    "METRONOME_CLICK_MS",
     "dbfs_to_amp",
     "render_tone",
     "render_click",
@@ -42,6 +43,11 @@ __all__ = [
 #: to leave the very first sample at the exact onset boundary) while removing the
 #: spectral splatter of a hard discontinuity.
 FADE_MS: float = 1.0
+
+#: Duration (milliseconds) of a single metronome click. The single source of
+#: truth for the click length, used both when synthesizing the metronome and when
+#: sizing the ``--end-cue`` ring-out so the final cue is never clipped.
+METRONOME_CLICK_MS: float = 6.0
 
 #: Peak-safety ceiling in linear amplitude (== -1 dBFS). The final mix is scaled
 #: down to this peak if it would otherwise exceed it.
@@ -266,7 +272,8 @@ def synth_metronome(schedule: Schedule, config: Config) -> np.ndarray:
 
     # Cache one click waveform per role (deterministic, identical per role).
     click_by_role = {
-        role: render_click(freq, sr, amp=amp) for role, freq in freq_by_role.items()
+        role: render_click(freq, sr, amp=amp, dur_ms=METRONOME_CLICK_MS)
+        for role, freq in freq_by_role.items()
     }
 
     for sample, role in clicks:

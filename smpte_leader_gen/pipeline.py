@@ -28,7 +28,7 @@ from pathlib import Path
 
 import click
 
-from .audio import build_audio, write_wav
+from .audio import METRONOME_CLICK_MS, build_audio, write_wav
 from .config import Config
 from .encode import FFmpegError, build_ffmpeg_command, discover_ffmpeg
 from .profiles import get_profile
@@ -88,7 +88,10 @@ def _resolve_tail_frames(config: Config) -> int:
     Without ``config.end_align`` (or without a metronome) this is just
     ``config.tail_frames``. Otherwise the tail is grown so the total output ends
     on the next metronome grid boundary, using the metronome's own anchor and
-    tempo so the alignment matches the audible clicks.
+    tempo so the alignment matches the audible clicks. When ``config.end_cue`` is
+    also set, a short ring-out is appended past the boundary so the boundary beat
+    (the "first beat of the next period") sounds as an audio cue and the file ends
+    just after it -- instead of ending silently exactly on the boundary.
 
     Args:
         config: The resolved run configuration.
@@ -112,7 +115,7 @@ def _resolve_tail_frames(config: Config) -> int:
     else:
         start_frame = round_half_up(float(raw) * float(config.fps))
 
-    return end_align_tail_frames(
+    tail = end_align_tail_frames(
         fps=config.fps,
         F=F,
         lead_seconds=config.lead_seconds,
@@ -124,6 +127,19 @@ def _resolve_tail_frames(config: Config) -> int:
         metronome_start_frame=start_frame,
         unit=config.end_align,
     )
+
+    if config.end_cue:
+        # End-align lands the total exactly on the boundary, where the metronome
+        # click is suppressed (its onset sample == total_samples). Append a short
+        # ring-out so that click is included and fully audible, ending the file
+        # right after it. The ring covers the click length plus one frame of
+        # margin for the sub-frame jitter between the click onset and frame grid.
+        import math
+
+        click_frames = math.ceil(METRONOME_CLICK_MS * 1e-3 * float(config.fps))
+        tail += max(2, click_frames + 1)
+
+    return tail
 
 
 # ---------------------------------------------------------------------------

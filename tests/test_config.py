@@ -277,6 +277,22 @@ def test_end_align_defaults_to_none() -> None:
     assert build_config(**_valid_kwargs()).end_align is None
 
 
+def test_end_cue_requires_end_align() -> None:
+    with pytest.raises(ValidationError) as exc:
+        build_config(**_valid_kwargs(bpm=120, end_cue=True))
+    assert "end-align" in str(exc.value).lower()
+
+
+def test_end_cue_with_end_align_ok() -> None:
+    cfg = build_config(**_valid_kwargs(bpm=120, end_align="bar", end_cue=True))
+    assert cfg.end_cue is True
+    assert cfg.end_align == "bar"
+
+
+def test_end_cue_defaults_false() -> None:
+    assert build_config(**_valid_kwargs()).end_cue is False
+
+
 def test_prores_in_mp4_raises() -> None:
     # prores422hq allows mov,mkv only -> mp4 rejected.
     with pytest.raises(ValidationError):

@@ -228,6 +228,7 @@ hyphens or underscores) is read first; **explicit CLI flags override file values
 | `--metronome-click-freq` | float | `1500` | Beat click frequency. |
 | `--metronome-sub-freq` | float | `1200` | Subdivision click frequency. |
 | `--end-align` | choice | none | `beat`/`bar`/`subdivision`: extend the black tail so the output ends exactly on the next metronome grid point (requires `--bpm`). |
+| `--end-cue` | flag | off | With `--end-align`, sound the final boundary beat as an audio cue and end just after it (instead of ending silently on the boundary). |
 
 #### Ending on a downbeat (`--end-align`)
 
@@ -244,6 +245,18 @@ integer fps with a compatible tempo; within half a frame otherwise).
 # Ends on the next bar boundary so the music's downbeat continues the groove.
 smpte-leader-gen --fps 24 --bpm 120 --time-sig 4/4 \
   --tail-seconds 1.0 --end-align bar -o leader_endbar.mov
+```
+
+By default the boundary beat itself is **silent** — the file ends exactly on it,
+leaving that downbeat for your music to take over. Add **`--end-cue`** to instead
+**sound** that boundary beat (the first beat of the next period) as an audio
+marker and end just after it — useful as a count-in whose final click you can
+align your music to:
+
+```bash
+# ...metronome ticks through the tail, the final downbeat clicks, then it ends.
+smpte-leader-gen --fps 24 --bpm 120 --time-sig 4/4 \
+  --tail-seconds 1.0 --end-align bar --end-cue -o leader_countin.mov
 ```
 
 ### Visual toggles

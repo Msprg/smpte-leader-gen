@@ -183,6 +183,7 @@ class Config(BaseModel):
     metronome_click_freq: float = 1500.0
     metronome_sub_freq: float = 1200.0
     end_align: str | None = None
+    end_cue: bool = False
     # visual
     count_style: str = "full"
     bg_color: tuple[float, float, float] = (0x20 / 255,) * 3
@@ -441,6 +442,12 @@ class Config(BaseModel):
             raise ValueError(
                 f"--end-align {self.end_align!r} requires the metronome (--bpm); "
                 "set a tempo or drop --end-align."
+            )
+
+        # The end cue is the sounded boundary beat, so it needs an alignment.
+        if self.end_cue and self.end_align is None:
+            raise ValueError(
+                "--end-cue requires --end-align (beat/bar/subdivision)."
             )
 
         profile = get_profile(self.profile)

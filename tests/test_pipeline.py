@@ -90,6 +90,34 @@ def test_no_end_align_leaves_tail_untouched(tmp_path):
     assert sched.tail_frames == 38  # round(1.6 * 24), unchanged
 
 
+def test_end_cue_extends_past_boundary_and_sounds_final_beat(tmp_path):
+    from smpte_leader_gen.audio import metronome_click_samples
+
+    # Without the cue: total lands exactly on the boundary (96 frames); the beat
+    # click there is suppressed (onset sample == total_samples).
+    base = dict(
+        lead_seconds=2, tail_seconds=1.6, bpm=120.0, end_align="beat",
+    )
+    aligned = build_schedule_from_config(
+        _tiny_config(tmp_path / "a.mkv", **base)
+    )
+    boundary_sample = aligned.total_samples
+    clicks_aligned = metronome_click_samples(aligned, _tiny_config(tmp_path / "a.mkv", **base))
+    assert all(s < boundary_sample for s, _ in clicks_aligned)  # boundary excluded
+
+    # With the cue: the file extends a little past the boundary so the boundary
+    # beat now falls inside [0, total_samples) and is sounded.
+    cued_cfg = _tiny_config(tmp_path / "b.mkv", end_cue=True, **base)
+    cued = build_schedule_from_config(cued_cfg)
+    assert cued.total_frames > aligned.total_frames
+    clicks_cued = metronome_click_samples(cued, cued_cfg)
+    assert any(s == boundary_sample for s, _ in clicks_cued)  # boundary now sounds
+    # ...and it is the final click, near the very end.
+    last_sample = max(s for s, _ in clicks_cued)
+    assert last_sample == boundary_sample
+    assert last_sample < cued.total_samples
+
+
 def test_no_flags_invert_correctly(tmp_path):
     cfg = _tiny_config(
         tmp_path / "out.mkv", no_persecond_beep=True, no_twopop=False
