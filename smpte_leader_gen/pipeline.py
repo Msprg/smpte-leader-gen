@@ -33,7 +33,7 @@ from .config import Config
 from .encode import FFmpegError, build_ffmpeg_command, discover_ffmpeg
 from .profiles import get_profile
 from .render import FrameRenderer
-from .timing import Schedule, build_schedule
+from .timing import Schedule, build_schedule, end_align_tail_frames, round_half_up
 
 __all__ = [
     "build_schedule_from_config",
@@ -57,6 +57,11 @@ def build_schedule_from_config(config: Config) -> Schedule:
     ``tail_frames``, ``preroll_frames``) come from the config's ``@property``
     helpers so the same rounding rules are applied everywhere.
 
+    When ``config.end_align`` is set (and the metronome is enabled), the black
+    tail is extended so the whole output ends on the next metronome grid boundary
+    (beat / bar / subdivision) at or after the nominal end -- see
+    :func:`_resolve_tail_frames`.
+
     Args:
         config: The fully resolved, validated run configuration.
 
@@ -68,12 +73,56 @@ def build_schedule_from_config(config: Config) -> Schedule:
         sample_rate=config.sample_rate,
         frames_per_block_override=config.frames_per_block,
         lead_seconds=config.lead_seconds,
-        tail_frames=config.tail_frames,
+        tail_frames=_resolve_tail_frames(config),
         preroll_frames=config.preroll_frames,
         beep_frames=config.beep_frames,
         persecond_beep=not config.no_persecond_beep,
         twopop=not config.no_twopop,
         count_style=config.count_style,
+    )
+
+
+def _resolve_tail_frames(config: Config) -> int:
+    """Resolve the tail length, extending it for ``--end-align`` when requested.
+
+    Without ``config.end_align`` (or without a metronome) this is just
+    ``config.tail_frames``. Otherwise the tail is grown so the total output ends
+    on the next metronome grid boundary, using the metronome's own anchor and
+    tempo so the alignment matches the audible clicks.
+
+    Args:
+        config: The resolved run configuration.
+
+    Returns:
+        The (possibly extended) tail length in frames.
+    """
+    if config.end_align is None or config.bpm is None:
+        return config.tail_frames
+
+    F = config.F
+    ffop_frame = config.preroll_frames + config.lead_seconds * F
+
+    # The metronome grid anchor, in frames (mirrors audio._resolve_metronome_start
+    # but in the frame domain): "0" -> 0, "t0" -> FFOP, otherwise seconds.
+    raw = config.metronome_start.strip().lower()
+    if raw == "0":
+        start_frame = 0
+    elif raw == "t0":
+        start_frame = ffop_frame
+    else:
+        start_frame = round_half_up(float(raw) * float(config.fps))
+
+    return end_align_tail_frames(
+        fps=config.fps,
+        F=F,
+        lead_seconds=config.lead_seconds,
+        preroll_frames=config.preroll_frames,
+        tail_frames=config.tail_frames,
+        bpm=config.bpm,
+        beats_per_bar=config.time_sig_beats,
+        subdivision=config.subdivision,
+        metronome_start_frame=start_frame,
+        unit=config.end_align,
     )
 
 

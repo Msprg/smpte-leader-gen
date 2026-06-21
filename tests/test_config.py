@@ -256,6 +256,27 @@ def test_valid_bpm_ok() -> None:
     assert cfg.bpm == 120
 
 
+def test_end_align_requires_bpm() -> None:
+    with pytest.raises(ValidationError) as exc:
+        build_config(**_valid_kwargs(end_align="beat"))
+    assert "bpm" in str(exc.value).lower()
+
+
+def test_end_align_with_bpm_ok() -> None:
+    for unit in ("beat", "bar", "subdivision"):
+        cfg = build_config(**_valid_kwargs(bpm=120, end_align=unit))
+        assert cfg.end_align == unit
+
+
+def test_end_align_invalid_value_raises() -> None:
+    with pytest.raises(ValidationError):
+        build_config(**_valid_kwargs(bpm=120, end_align="measure"))
+
+
+def test_end_align_defaults_to_none() -> None:
+    assert build_config(**_valid_kwargs()).end_align is None
+
+
 def test_prores_in_mp4_raises() -> None:
     # prores422hq allows mov,mkv only -> mp4 rejected.
     with pytest.raises(ValidationError):

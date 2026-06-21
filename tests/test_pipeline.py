@@ -56,6 +56,40 @@ def test_build_schedule_from_config_maps_flags(tmp_path):
     assert any(c.is_twopop for c in sched.beep_cues)
 
 
+def test_end_align_extends_tail_to_beat(tmp_path):
+    # 24 fps, 120 bpm => 12 frames/beat. lead=2 (48), tail=1.5s=36 => 84.
+    # Next beat boundary >= 84 is 84 itself (84/12=7), so no change here; bump
+    # tail to 1.6s (38) => total 86, next beat boundary is 96 (beat 8).
+    cfg = _tiny_config(
+        tmp_path / "out.mkv", lead_seconds=2, tail_seconds=1.6,
+        bpm=120.0, end_align="beat",
+    )
+    sched = build_schedule_from_config(cfg)
+    assert sched.total_frames == 96
+    assert sched.total_frames % 12 == 0  # lands on a beat
+    # Audio length lands on the beat sample too (48000*60/120 = 24000 / beat).
+    assert sched.total_samples % 24000 == 0
+
+
+def test_end_align_bar_uses_time_sig(tmp_path):
+    # bar = 4 beats = 48 frames. total nominal 48+38=86 -> next bar boundary 96.
+    cfg = _tiny_config(
+        tmp_path / "out.mkv", lead_seconds=2, tail_seconds=1.6,
+        bpm=120.0, time_sig="4/4", end_align="bar",
+    )
+    sched = build_schedule_from_config(cfg)
+    assert sched.total_frames == 96
+    assert sched.total_frames % 48 == 0
+
+
+def test_no_end_align_leaves_tail_untouched(tmp_path):
+    cfg = _tiny_config(
+        tmp_path / "out.mkv", lead_seconds=2, tail_seconds=1.6, bpm=120.0,
+    )
+    sched = build_schedule_from_config(cfg)
+    assert sched.tail_frames == 38  # round(1.6 * 24), unchanged
+
+
 def test_no_flags_invert_correctly(tmp_path):
     cfg = _tiny_config(
         tmp_path / "out.mkv", no_persecond_beep=True, no_twopop=False

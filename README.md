@@ -23,7 +23,9 @@ wand, big descending numbers, a single-frame reference beep) and adds:
   corner-to-corner diagonals and a centre crosshair,
 - a **single-frame 1 kHz sync beep** every leader-second, preserving the classic
   **"2-pop"** accent,
-- an **optional audio-only metronome** (with subdivisions and an accented downbeat).
+- an **optional audio-only metronome** (with subdivisions and an accented downbeat),
+- optional **`--end-align`**: extend the tail so the file ends exactly on the next
+  metronome beat/bar/subdivision, so butt-joined music continues the click grid.
 
 Frame and sample timing are accurate enough for fractional rates such as
 **23.976 fps (24000/1001)**: video is encoded at the exact rational rate and audio
@@ -225,6 +227,24 @@ hyphens or underscores) is read first; **explicit CLI flags override file values
 | `--metronome-accent-freq` | float | `2000` | Downbeat click frequency. |
 | `--metronome-click-freq` | float | `1500` | Beat click frequency. |
 | `--metronome-sub-freq` | float | `1200` | Subdivision click frequency. |
+| `--end-align` | choice | none | `beat`/`bar`/`subdivision`: extend the black tail so the output ends exactly on the next metronome grid point (requires `--bpm`). |
+
+#### Ending on a downbeat (`--end-align`)
+
+When you butt-join your music to the end of the leader, `--end-align` makes the
+file end land exactly where the metronome's next **beat** (or **bar** /
+**subdivision**) would fall, so the song's downbeat continues the click grid
+seamlessly. The black tail is only ever **extended** (never shortened) to reach
+that boundary, and the metronome keeps ticking through the tail up to it.
+Alignment is computed in the frame domain — the granularity you cut on — so it is
+frame-accurate (sample-exact when the unit spans a whole number of frames, e.g.
+integer fps with a compatible tempo; within half a frame otherwise).
+
+```bash
+# Ends on the next bar boundary so the music's downbeat continues the groove.
+smpte-leader-gen --fps 24 --bpm 120 --time-sig 4/4 \
+  --tail-seconds 1.0 --end-align bar -o leader_endbar.mov
+```
 
 ### Visual toggles
 

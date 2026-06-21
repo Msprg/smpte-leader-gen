@@ -19,6 +19,7 @@ __all__ = [
     "frames_per_block",
     "frame_start_sample",
     "total_samples_for",
+    "end_align_tail_frames",
     "Cue",
     "Schedule",
     "build_schedule",
@@ -214,6 +215,92 @@ def total_samples_for(total_frames: int, sample_rate: int, fps: Fraction) -> int
         The total number of audio samples.
     """
     return frame_start_sample(total_frames, sample_rate, fps)
+
+
+def end_align_tail_frames(
+    *,
+    fps: Fraction,
+    F: int,
+    lead_seconds: int,
+    preroll_frames: int,
+    tail_frames: int,
+    bpm: float,
+    beats_per_bar: int,
+    subdivision: int,
+    metronome_start_frame: int,
+    unit: str,
+) -> int:
+    """Return a (possibly larger) tail length so the file ends on a metronome grid point.
+
+    The metronome lays a tempo grid anchored at ``metronome_start_frame`` (the same
+    anchor its clicks use). This returns the smallest tail length ``>= tail_frames``
+    such that the **total** frame count lands on the next grid boundary at or after
+    the nominal end -- so when the leader's black tail is butt-joined to the music,
+    the music's downbeat continues that grid seamlessly.
+
+    Alignment is computed in the frame domain (the granularity an editor cuts on),
+    so it is frame-accurate: exact when the chosen unit spans a whole number of
+    frames (e.g. integer fps with a compatible tempo), and within half a frame
+    otherwise.
+
+    Args:
+        fps: The exact frame rate.
+        F: Frames per leader-second block.
+        lead_seconds: Number of leader-seconds (``L``).
+        preroll_frames: Pre-roll length in frames.
+        tail_frames: The nominal black-tail length in frames (the floor; never
+            shortened).
+        bpm: Metronome tempo in beats per minute (``> 0``).
+        beats_per_bar: Beats per bar (the time-signature numerator), for ``"bar"``.
+        subdivision: Metronome clicks per beat, for ``"subdivision"``.
+        metronome_start_frame: Frame the metronome grid is anchored at.
+        unit: Grid granularity to align to -- ``"beat"``, ``"bar"`` or
+            ``"subdivision"``.
+
+    Returns:
+        The aligned tail length in frames (``>= tail_frames``).
+
+    Raises:
+        ValueError: If ``bpm <= 0`` or ``unit`` is not a recognized granularity.
+    """
+    import math
+
+    if bpm <= 0:
+        raise ValueError(f"bpm must be positive for end alignment, got {bpm}")
+
+    frames_per_beat = 60.0 * float(fps) / bpm
+    if unit == "beat":
+        unit_frames = frames_per_beat
+    elif unit == "bar":
+        unit_frames = frames_per_beat * beats_per_bar
+    elif unit == "subdivision":
+        unit_frames = frames_per_beat / subdivision
+    else:
+        raise ValueError(
+            f"end-align unit must be 'beat', 'bar' or 'subdivision', got {unit!r}"
+        )
+
+    if unit_frames <= 0:
+        return tail_frames
+
+    countdown = lead_seconds * F
+    nominal_total = preroll_frames + countdown + tail_frames
+
+    def boundary(m: int) -> int:
+        # m-th grid frame from the anchor (round-half-up, matching the click grid).
+        return metronome_start_frame + round_half_up(m * unit_frames)
+
+    # Smallest m >= 0 whose boundary frame is at or after the nominal end.
+    if nominal_total <= metronome_start_frame:
+        m = 0
+    else:
+        m = max(0, math.ceil((nominal_total - metronome_start_frame) / unit_frames))
+    while boundary(m) < nominal_total:
+        m += 1
+
+    target_total = boundary(m)
+    aligned_tail = target_total - preroll_frames - countdown
+    return max(tail_frames, aligned_tail)
 
 
 # ---------------------------------------------------------------------------

@@ -182,6 +182,7 @@ class Config(BaseModel):
     metronome_accent_freq: float = 2000.0
     metronome_click_freq: float = 1500.0
     metronome_sub_freq: float = 1200.0
+    end_align: str | None = None
     # visual
     count_style: str = "full"
     bg_color: tuple[float, float, float] = (0x20 / 255,) * 3
@@ -357,6 +358,16 @@ class Config(BaseModel):
             ) from None
         return text
 
+    @field_validator("end_align")
+    @classmethod
+    def _check_end_align(cls, v: str | None) -> str | None:
+        if v is not None and v not in ("beat", "bar", "subdivision"):
+            raise ValueError(
+                "end_align must be 'beat', 'bar' or 'subdivision' (or unset), "
+                f"got {v!r}"
+            )
+        return v
+
     @field_validator("count_style")
     @classmethod
     def _check_count_style(cls, v: str) -> str:
@@ -423,6 +434,13 @@ class Config(BaseModel):
                 "the 2-pop accent requires lead_seconds >= 2 (the '2' second); "
                 f"got {self.lead_seconds}. Use --no-twopop or increase "
                 "--lead-seconds."
+            )
+
+        # End-on-beat alignment needs a metronome grid to align to.
+        if self.end_align is not None and self.bpm is None:
+            raise ValueError(
+                f"--end-align {self.end_align!r} requires the metronome (--bpm); "
+                "set a tempo or drop --end-align."
             )
 
         profile = get_profile(self.profile)

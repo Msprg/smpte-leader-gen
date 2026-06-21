@@ -65,6 +65,7 @@ _PASSTHROUGH_PARAMS: tuple[str, ...] = (
     "metronome_accent_freq",
     "metronome_click_freq",
     "metronome_sub_freq",
+    "end_align",
     "count_style",
     "bg_color",
     "fg_color",
@@ -189,6 +190,11 @@ def _format_duration(total_frames: int, fps_num: int, fps_den: int) -> str:
               show_default=True, help="Beat click frequency (Hz).")
 @click.option("--metronome-sub-freq", type=float, default=1200.0,
               show_default=True, help="Subdivision click frequency (Hz).")
+@click.option("--end-align",
+              type=click.Choice(["beat", "bar", "subdivision"]), default=None,
+              help="Extend the black tail so the output ends exactly on the next "
+                   "metronome beat/bar/subdivision (requires --bpm), so butt-joined "
+                   "music continues the click grid.")
 # ---- visual ---------------------------------------------------------------
 @click.option("--count-style", type=click.Choice(["full", "smpte"]),
               default="full", show_default=True,
@@ -330,6 +336,8 @@ def _print_verbose_preamble(config: Any) -> None:
     click.echo(f"  tail_frames    = {config.tail_frames}")
     click.echo(f"  preroll_frames = {config.preroll_frames}")
     click.echo(f"  count_style    = {config.count_style}")
+    click.echo(f"  bpm            = {config.bpm}")
+    click.echo(f"  end_align      = {config.end_align}")
     click.echo(f"  profile        = {config.profile}")
     click.echo(f"  container      = {config.container}")
     click.echo(f"  sample_rate    = {config.sample_rate}")

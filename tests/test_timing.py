@@ -10,6 +10,7 @@ from smpte_leader_gen.timing import (
     Cue,
     Schedule,
     build_schedule,
+    end_align_tail_frames,
     frame_start_sample,
     frames_per_block,
     parse_fps,
@@ -466,3 +467,89 @@ def test_cue_fields_and_frozen():
     assert cue.is_twopop is True
     with pytest.raises(Exception):
         cue.frame = 0  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# end_align_tail_frames
+# ---------------------------------------------------------------------------
+
+
+def test_end_align_beat_extends_to_next_beat_integer_fps():
+    # 24 fps, 120 bpm => 12 frames/beat. lead=8 (192), preroll=0, tail=50 => 242.
+    # Next beat boundary >= 242 is 252 (beat 21), so tail grows 50 -> 60.
+    tail = end_align_tail_frames(
+        fps=Fraction(24), F=24, lead_seconds=8, preroll_frames=0, tail_frames=50,
+        bpm=120.0, beats_per_bar=4, subdivision=1, metronome_start_frame=0,
+        unit="beat",
+    )
+    assert tail == 60
+    assert (0 + 8 * 24 + tail) % 12 == 0  # total lands on a beat
+
+
+def test_end_align_bar_extends_to_next_bar():
+    # Same setup, bar = 4 beats = 48 frames. 242 -> next multiple of 48 is 288.
+    tail = end_align_tail_frames(
+        fps=Fraction(24), F=24, lead_seconds=8, preroll_frames=0, tail_frames=50,
+        bpm=120.0, beats_per_bar=4, subdivision=1, metronome_start_frame=0,
+        unit="bar",
+    )
+    assert tail == 288 - 192  # == 96
+    assert (192 + tail) % 48 == 0
+
+
+def test_end_align_subdivision_finer_grid():
+    # subdivision=2 => 6 frames per click. 242 -> next multiple of 6 is 246.
+    tail = end_align_tail_frames(
+        fps=Fraction(24), F=24, lead_seconds=8, preroll_frames=0, tail_frames=50,
+        bpm=120.0, beats_per_bar=4, subdivision=2, metronome_start_frame=0,
+        unit="subdivision",
+    )
+    assert tail == 246 - 192  # == 54
+    assert (192 + tail) % 6 == 0
+
+
+def test_end_align_never_shortens_when_already_aligned():
+    # tail=48 => total 240, already a multiple of 12 (beat). Tail unchanged.
+    tail = end_align_tail_frames(
+        fps=Fraction(24), F=24, lead_seconds=8, preroll_frames=0, tail_frames=48,
+        bpm=120.0, beats_per_bar=4, subdivision=1, metronome_start_frame=0,
+        unit="beat",
+    )
+    assert tail == 48
+
+
+def test_end_align_honors_metronome_anchor():
+    # Grid anchored at frame 5: beat boundaries at 5, 17, 29, ... (every 12).
+    # total nominal = 192 + 50 = 242; next boundary >= 242 from anchor 5 is
+    # 5 + 12*20 = 245.  tail 50 -> 53.
+    tail = end_align_tail_frames(
+        fps=Fraction(24), F=24, lead_seconds=8, preroll_frames=0, tail_frames=50,
+        bpm=120.0, beats_per_bar=4, subdivision=1, metronome_start_frame=5,
+        unit="beat",
+    )
+    assert tail == 53
+    assert (192 + tail - 5) % 12 == 0
+
+
+def test_end_align_fractional_fps_is_frame_accurate():
+    # 23.976 fps, 120 bpm => 11.988 frames/beat. Beats round to nearest frame.
+    fps = Fraction(24000, 1001)
+    tail = end_align_tail_frames(
+        fps=fps, F=24, lead_seconds=8, preroll_frames=0, tail_frames=50,
+        bpm=120.0, beats_per_bar=4, subdivision=1, metronome_start_frame=0,
+        unit="beat",
+    )
+    # Total must be >= nominal and on the rounded beat grid (round(m*11.988)).
+    total = 192 + tail
+    assert total >= 242
+    m = round_half_up(total / (60.0 * float(fps) / 120.0))
+    assert total == round_half_up(m * (60.0 * float(fps) / 120.0))
+
+
+def test_end_align_bad_unit_raises():
+    with pytest.raises(ValueError):
+        end_align_tail_frames(
+            fps=Fraction(24), F=24, lead_seconds=8, preroll_frames=0,
+            tail_frames=50, bpm=120.0, beats_per_bar=4, subdivision=1,
+            metronome_start_frame=0, unit="measure",
+        )
