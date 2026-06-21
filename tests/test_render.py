@@ -427,7 +427,7 @@ def test_metronome_shows_during_preroll() -> None:
     pre = np.frombuffer(r.render_frame(0), dtype=np.uint8).reshape(
         cfg.height, cfg.width, 3
     )
-    band = (slice(int(0.10 * cfg.height), int(0.28 * cfg.height)),
+    band = (slice(int(0.04 * cfg.height), int(0.16 * cfg.height)),
             slice(int(0.40 * cfg.width), int(0.60 * cfg.width)))
     assert not np.array_equal(pre[band], r._static[band])  # noqa: SLF001
 
@@ -463,10 +463,11 @@ def test_metronome_dots_light_in_order() -> None:
     for frame, lit in [(0, 0), (12, 1), (24, 2), (36, 3), (48, 0)]:
         assert lvl[frame, lit] == pytest.approx(1.0)
         assert int(np.argmax(lvl[frame])) == lit  # exactly that dot is brightest
-    # Mid-beat (frame 6): the downbeat dot is fading, the others are dark.
-    assert 0.0 < lvl[6, 0] < 1.0
-    assert lvl[6, 1] == 0.0
-    assert lvl[6, 2] == 0.0
+    # The flash is short: the downbeat dot fades over a few frames and is dark well
+    # before the next beat (frame 12), and no other dot lights between beats.
+    assert 0.0 < lvl[1, 0] < 1.0
+    assert lvl[6, 0] == 0.0
+    assert lvl[6].max() == 0.0
 
 
 def test_metronome_dots_single_row_without_subdivision() -> None:
@@ -504,13 +505,23 @@ def test_metronome_dots_downbeat_drawn_larger_in_accent() -> None:
         arr = np.frombuffer(r.render_frame(frame), dtype=np.uint8).reshape(
             cfg.height, cfg.width, 3
         ).astype(np.int16)
-        band = arr[int(0.10 * cfg.height):int(0.17 * cfg.height), :]
+        band = arr[int(0.03 * cfg.height):int(0.13 * cfg.height), :]
         return int((np.abs(band - accent).sum(axis=2) < 40).sum())
 
     downbeat = red_count(0)   # accent dot (larger), lit
     beat = red_count(12)      # regular beat dot, lit
     assert downbeat > 0 and beat > 0
     assert downbeat > beat    # the downbeat dot is drawn larger
+
+
+def test_metronome_dots_fade_is_short() -> None:
+    """Each dot flashes briefly (a few frames) rather than smearing across the
+    whole beat -- the lit window is far shorter than the beat interval."""
+    r = _dots_renderer()  # 24 fps / 120 bpm -> 12-frame beat
+    lvl = r._metro_beats_level  # noqa: SLF001
+    # Frames the downbeat dot is lit within its first beat (onset at frame 0).
+    lit_frames = int((lvl[:12, 0] > 0.0).sum())
+    assert 2 <= lit_frames <= 5   # ~0.12 s at 24 fps, well under the 12-frame beat
 
 
 def test_metronome_dots_stay_above_inner_rectangle() -> None:

@@ -175,8 +175,9 @@ Whenever `--bpm` is set, a top-center animation appears, in one of two styles
   the bar's downbeat is the larger accent dot, so the downbeat reads by size as
   well as colour. With `--subdivision > 1` a second, smaller row appears below it
   and marches the subdivision pulse within the beat, so every audible click is
-  represented (beats on top, sub-pulses below). The rows sit above the inner
-  aspect rectangle.
+  represented (beats on top, sub-pulses below). The beat row sits at the top
+  readout level — between the corner frame-counter and timer, reading as a header
+  — and each dot flashes briefly rather than smearing.
 - **`pendulum`**: an inverted "Maelzel" pendulum that swings one beat per
   half-swing, reaching an extreme exactly on each beat; the bob lights up on every
   beat (brighter, with a ring, on the downbeat) and the pivot pulses on every

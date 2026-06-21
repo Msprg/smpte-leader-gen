@@ -47,6 +47,11 @@ FONT_BOLD = str(_FONT_DIR / "DejaVuSansMono-Bold.ttf")
 #: (radians). The bob reaches +-this angle exactly on each beat.
 _METRO_SWING_RAD = math.radians(32.0)
 
+#: Target fade time (seconds) of a metronome dot after it lights. Kept short so
+#: each dot reads as a crisp flash rather than a long smear; it is capped per click
+#: so a dot always goes dark before its own next onset (no steady glow).
+_DOT_FADE_S = 0.12
+
 #: Fixed turquoise fill for the left-side metronome / nudge readout. Drawn bold in
 #: this colour so the glyphs stay legible where they overlap the (near-white,
 #: #E0E0E0) registration rectangle and diagonals -- the bold weight reads across the
@@ -578,10 +583,14 @@ class FrameRenderer:
             else None
         )
 
+        # Short fixed fade (~_DOT_FADE_S) so each dot flashes crisply instead of
+        # smearing across the whole beat; capped to the onset interval so a dot is
+        # always dark before it lights again (no steady glow at high tempo).
         beat_interval_frames = 60.0 * float(fps) / cfg.bpm
         sub_interval_frames = beat_interval_frames / n_subs
-        beat_decay = max(2, int(round(beat_interval_frames)))
-        sub_decay = max(2, int(round(sub_interval_frames)))
+        fade_frames = max(2, int(round(_DOT_FADE_S * float(fps))))
+        beat_decay = max(2, min(fade_frames, int(beat_interval_frames)))
+        sub_decay = max(2, min(fade_frames, int(sub_interval_frames)))
 
         # Walk the clicks in order. Beats (and the accent) advance the bar position
         # and light a top-row dot; every click lights a bottom-row sub-pulse dot at
@@ -656,17 +665,10 @@ class FrameRenderer:
         """
         lay = self.layout
 
-        # With two rows, straddle the row anchor; with one, sit on it.
-        if self._metro_two_rows:
-            beats_y = lay.metro_dot_row_y - lay.metro_dot_row_gap / 2.0
-            subs_y = lay.metro_dot_row_y + lay.metro_dot_row_gap / 2.0
-        else:
-            beats_y = lay.metro_dot_row_y
-
-        # Beat row: downbeat (pos 0) is the larger accent dot, the rest are beats.
+        # Beat row at the readout level; downbeat (pos 0) is the larger accent dot.
         self._draw_dot_row(
             ctx,
-            beats_y,
+            lay.metro_dot_row_y,
             self._metro_beat_spacing,
             self._metro_beats_level[i],
             lambda pos: (
@@ -674,11 +676,11 @@ class FrameRenderer:
             ),
         )
 
-        # Subdivision row (only when subdividing): uniform smaller dots.
+        # Subdivision row just below it (only when subdividing): smaller dots.
         if self._metro_subs_level is not None:
             self._draw_dot_row(
                 ctx,
-                subs_y,
+                lay.metro_dot_row_y + lay.metro_dot_row_gap,
                 self._metro_sub_spacing,
                 self._metro_subs_level[i],
                 lambda pos: lay.metro_dot_sub_radius,

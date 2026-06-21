@@ -226,11 +226,13 @@ def test_metronome_widget_in_top_band(width: int, height: int) -> None:
 
 
 @pytest.mark.parametrize(("width", "height"), PRESETS)
-def test_metronome_dot_rows_above_inner_rectangle(width: int, height: int) -> None:
+def test_metronome_dot_rows_at_readout_level(width: int, height: int) -> None:
     layout = compute_layout(width, height)
-    # Centred horizontally, in the top band above the inner aspect rectangle.
+    # Centred horizontally; the beat row sits at the top readout level (same as the
+    # frame counter / timer, which are in the corners) so it reads as a header.
     assert layout.metro_center_x == pytest.approx(width / 2.0)
-    assert layout.metro_dot_row_y == pytest.approx(0.135 * height)
+    assert layout.metro_dot_row_y == pytest.approx(layout.counter_baseline_y)
+    assert layout.metro_dot_row_y == pytest.approx(0.085 * height)
 
     # Size hierarchy: downbeat (accent) > beat > subdivision dot.
     assert layout.metro_dot_accent_radius > layout.metro_dot_radius
@@ -239,17 +241,10 @@ def test_metronome_dot_rows_above_inner_rectangle(width: int, height: int) -> No
     assert layout.metro_dot_spacing > 2.0 * layout.metro_dot_accent_radius
     assert layout.metro_dot_sub_spacing > 2.0 * layout.metro_dot_sub_radius
 
-    # Single row (no subdivision): the accent dot clears the very top and stays
-    # above the inner aspect rectangle's top edge (no overlap with it).
-    single_bottom = layout.metro_dot_row_y + layout.metro_dot_accent_radius
-    assert layout.metro_dot_row_y - layout.metro_dot_accent_radius > 0.09 * height
-    assert single_bottom < layout.aspect_rect_top
-
-    # Two rows (subdividing): beats above the anchor, subs below; the whole stack
-    # clears the top and still stays above the inner rectangle.
-    beats_y = layout.metro_dot_row_y - layout.metro_dot_row_gap / 2.0
-    subs_y = layout.metro_dot_row_y + layout.metro_dot_row_gap / 2.0
-    assert beats_y - layout.metro_dot_accent_radius > 0.09 * height
+    # The beat row clears the top frame edge above; the subdivision row hangs one
+    # gap below it and still stays well above the inner aspect rectangle (0.17 h).
+    assert layout.metro_dot_row_y - layout.metro_dot_accent_radius > 0.02 * height
+    subs_y = layout.metro_dot_row_y + layout.metro_dot_row_gap
     assert subs_y + layout.metro_dot_sub_radius < layout.aspect_rect_top
 
 
