@@ -25,7 +25,7 @@ PRESETS: list[tuple[int, int]] = [
 @pytest.mark.parametrize(("width", "height"), PRESETS)
 def test_clock_radius_ratio(width: int, height: int) -> None:
     layout = compute_layout(width, height)
-    assert layout.clock_radius / layout.unit == pytest.approx(0.30)
+    assert layout.clock_radius / layout.unit == pytest.approx(0.22)
 
 
 @pytest.mark.parametrize(("width", "height"), PRESETS)
@@ -73,6 +73,12 @@ def test_all_sizes_positive(width: int, height: int) -> None:
         layout.burnin_center_x,
         layout.wand_line_width,
         layout.geometry_line_width,
+        layout.geometry_line_alpha,
+        layout.rect_line_width,
+        layout.border_rect_left,
+        layout.border_rect_top,
+        layout.border_rect_width,
+        layout.border_rect_height,
         layout.aspect_rect_left,
         layout.aspect_rect_top,
         layout.aspect_rect_width,
@@ -149,6 +155,24 @@ def test_aspect_rect_is_centered_with_frame_aspect(width: int, height: int) -> N
     # Strictly inside the frame.
     assert 0 < layout.aspect_rect_left < width / 2.0
     assert layout.aspect_rect_width < width
+
+
+@pytest.mark.parametrize(("width", "height"), PRESETS)
+def test_border_rect_spans_full_frame(width: int, height: int) -> None:
+    layout = compute_layout(width, height)
+    # Border hugs the edges (inset by at most a line width) and is much larger
+    # than the inner aspect rectangle.
+    assert layout.border_rect_left == pytest.approx(layout.rect_line_width)
+    assert layout.border_rect_width == pytest.approx(width - 2 * layout.rect_line_width)
+    assert layout.border_rect_height == pytest.approx(height - 2 * layout.rect_line_width)
+    assert layout.border_rect_width > layout.aspect_rect_width
+    assert layout.border_rect_height > layout.aspect_rect_height
+
+
+@pytest.mark.parametrize(("width", "height"), PRESETS)
+def test_geometry_lines_semi_transparent(width: int, height: int) -> None:
+    layout = compute_layout(width, height)
+    assert 0.0 < layout.geometry_line_alpha < 1.0
 
 
 @pytest.mark.parametrize(("width", "height"), PRESETS)

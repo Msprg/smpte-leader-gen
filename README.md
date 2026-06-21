@@ -14,11 +14,13 @@ wand, big descending numbers, a single-frame reference beep) and adds:
   is the **actual fps** so near-identical rates stay distinct (e.g. `07/23.976`
   vs `07/24`),
 - a **flashing circle** that flashes on the exact frame an audio cue fires,
-- a **bottom "audio ruler"**: a per-frame tick scale with a moving playhead marker
-  that returns to the accent **origin tick on every beep** — a linear, frame-
-  calibrated reference for discovering and quantifying A/V-sync offset,
-- **registration geometry**: full-frame crosshair + corner-to-corner diagonals + a
-  centred rectangle sharing the video's aspect ratio,
+- a **bottom "audio ruler"**: a per-frame tick scale **centred on zero** (the beep
+  position in the middle) with major ticks labelled in **milliseconds** of A/V
+  offset, and a moving playhead marker that **crosses the centre on every beep** —
+  a calibrated reference for discovering and quantifying A/V-sync offset,
+- **registration geometry**: a **full-frame border** marking the exact video extent,
+  a smaller centred rectangle sharing the video's aspect ratio, plus semi-transparent
+  corner-to-corner diagonals and a centre crosshair,
 - a **single-frame 1 kHz sync beep** every leader-second, preserving the classic
   **"2-pop"** accent,
 - an **optional audio-only metronome** (with subdivisions and an accented downbeat).

@@ -136,6 +136,8 @@ class FrameRenderer:
         )
         # Major-tick / label interval for the bottom ruler (every 5 frames).
         self._ruler_major = 5
+        # Duration of one frame in milliseconds, for the ruler's ms scale.
+        self._frame_ms = 1000.0 * schedule.fps.denominator / schedule.fps.numerator
 
         # Build and cache the static RGB background.
         self._static: np.ndarray = self._build_static()
@@ -168,8 +170,9 @@ class FrameRenderer:
         ctx.set_source_rgb(*self._bg)
         ctx.paint()
 
-        # Registration geometry: full-frame diagonals (corner to corner).
-        ctx.set_source_rgb(*self._fg)
+        # Registration geometry: full-frame diagonals (corner to corner), drawn
+        # semi-transparent so they read as a faint reference, not a distraction.
+        ctx.set_source_rgba(*self._fg, lay.geometry_line_alpha)
         ctx.set_line_width(lay.geometry_line_width)
         ctx.move_to(0.0, 0.0)
         ctx.line_to(w, h)
@@ -178,8 +181,20 @@ class FrameRenderer:
         ctx.line_to(0.0, h)
         ctx.stroke()
 
-        # Centred rectangle sharing the frame's aspect ratio (corners on the
-        # diagonals); a quick visual aspect/centering reference.
+        # Full-frame border marking the exact video extent (opaque; same style as
+        # the inner rectangle) so the video size is unambiguous on screen.
+        ctx.set_source_rgb(*self._fg)
+        ctx.set_line_width(lay.rect_line_width)
+        ctx.rectangle(
+            lay.border_rect_left,
+            lay.border_rect_top,
+            lay.border_rect_width,
+            lay.border_rect_height,
+        )
+        ctx.stroke()
+
+        # Smaller centred rectangle sharing the frame's aspect ratio (corners on
+        # the diagonals); a quick visual aspect/centering reference.
         ctx.rectangle(
             lay.aspect_rect_left,
             lay.aspect_rect_top,
@@ -188,7 +203,9 @@ class FrameRenderer:
         )
         ctx.stroke()
 
-        # Full-frame crosshair (vertical + horizontal through center).
+        # Full-frame crosshair (vertical + horizontal through center), also
+        # semi-transparent to match the diagonals.
+        ctx.set_source_rgba(*self._fg, lay.geometry_line_alpha)
         ctx.set_line_width(lay.crosshair_line_width)
         ctx.move_to(lay.cx, 0.0)
         ctx.line_to(lay.cx, h)
@@ -214,21 +231,45 @@ class FrameRenderer:
         self._draw_ruler_labels(arr)
         return arr
 
-    def _ruler_tick_x(self, k: int) -> float:
-        """X position of frame tick ``k`` (0..F) on the bottom ruler."""
+    def _ruler_tick_range(self) -> range:
+        """Integer frame offsets spanned by the centred ruler: ``-F//2 .. F-F//2``.
+
+        The range is symmetric about zero (always including the ``0`` centre tick)
+        and contains ``F + 1`` ticks, mapping the full leader-second across the bar.
+        """
+        F = self.schedule.F
+        return range(-(F // 2), F - (F // 2) + 1)
+
+    def _ruler_tick_x(self, offset: int) -> float:
+        """X position of the tick at frame ``offset`` from the centred zero.
+
+        ``offset == 0`` maps to the middle of the bar (the beep position);
+        ``offset == -F/2`` to ``ruler_left`` and ``offset == +F/2`` to
+        ``ruler_right``.
+        """
         lay = self.layout
         span = lay.ruler_right - lay.ruler_left
-        return lay.ruler_left + (k / self.schedule.F) * span
+        return lay.ruler_left + ((offset + self.schedule.F / 2.0) / self.schedule.F) * span
+
+    def _ruler_offset_for_frame(self, i: int) -> int:
+        """Signed frame offset of frame ``i`` from the nearest beep (centred zero).
+
+        Frames within ``[0, F/2]`` of a beep read positive (right of centre);
+        the rest read negative (left of centre), so the marker passes through the
+        centre exactly on the beep/2-pop frame.
+        """
+        F = self.schedule.F
+        j = (i - self.schedule.preroll_frames) % F
+        return j if j <= F / 2.0 else j - F
 
     def _draw_ruler_scale(self, ctx: cairo.Context) -> None:
         """Draw the ruler baseline and per-frame ticks (cairo vectors).
 
-        Ticks run for frame indices ``0..F``; every fifth is a taller major tick.
-        The origin tick (frame 0, where the per-second beep fires) is drawn in the
-        accent color as the sync reference.
+        Ticks run symmetrically about the centred zero; every fifth is a taller
+        major tick. The centre tick (offset 0, where the per-second beep fires) is
+        drawn in the accent color as the sync reference.
         """
         lay = self.layout
-        F = self.schedule.F
 
         # Baseline.
         ctx.set_source_rgb(*self._fg)
@@ -238,11 +279,11 @@ class FrameRenderer:
         ctx.stroke()
 
         # Ticks below the baseline.
-        for k in range(F + 1):
-            x = self._ruler_tick_x(k)
-            major = (k % self._ruler_major) == 0
+        for offset in self._ruler_tick_range():
+            x = self._ruler_tick_x(offset)
+            major = (offset % self._ruler_major) == 0
             tick_h = lay.ruler_tick_major_h if major else lay.ruler_tick_minor_h
-            if k == 0:
+            if offset == 0:
                 ctx.set_source_rgb(*self._accent)  # sync origin (beep position)
             else:
                 ctx.set_source_rgb(*self._fg)
@@ -252,17 +293,27 @@ class FrameRenderer:
             ctx.stroke()
 
     def _draw_ruler_labels(self, arr: np.ndarray) -> None:
-        """Draw small frame-index labels under the ruler's major ticks (Pillow)."""
+        """Draw millisecond labels under the ruler's major ticks (Pillow).
+
+        Each major tick is labelled with its A/V offset in milliseconds relative to
+        the centred zero (the beep). The centre reads ``0`` in the accent color.
+        """
         lay = self.layout
-        F = self.schedule.F
         image = Image.fromarray(arr, mode="RGB")
         draw = ImageDraw.Draw(image)
-        for k in range(0, F, self._ruler_major):
-            x = self._ruler_tick_x(k)
-            color = self._accent255 if k == 0 else self._fg255
+        for offset in self._ruler_tick_range():
+            if (offset % self._ruler_major) != 0:
+                continue
+            x = self._ruler_tick_x(offset)
+            if offset == 0:
+                text = "0"
+                color = self._accent255
+            else:
+                text = f"{round(offset * self._frame_ms):+d}"
+                color = self._fg255
             draw.text(
                 (x, lay.ruler_label_y),
-                str(k),
+                text,
                 font=self._font_ruler,
                 fill=color,
                 anchor="mm",
@@ -386,15 +437,14 @@ class FrameRenderer:
     def _draw_ruler_marker(self, ctx: cairo.Context, i: int) -> None:
         """Draw the ruler playhead (a downward triangle) for frame ``i``.
 
-        The marker sits on the tick for ``j = (i - preroll) % F`` -- the current
-        frame within the leader-second -- so it returns to the accent origin tick
-        exactly on the beep/2-pop frame, giving a linear, frame-calibrated cue for
-        measuring any A/V-sync offset against the audible beep.
+        The marker sits on the tick for the current frame's signed offset from the
+        nearest beep, so it crosses the centred zero exactly on the beep/2-pop
+        frame, giving a calibrated cue for measuring any A/V-sync offset (in the
+        labelled milliseconds) against the audible beep.
         """
         lay = self.layout
-        sched = self.schedule
-        j = (i - sched.preroll_frames) % sched.F
-        mx = self._ruler_tick_x(j)
+        offset = self._ruler_offset_for_frame(i)
+        mx = self._ruler_tick_x(offset)
         top = lay.ruler_y - lay.ruler_marker_h
         hw = lay.ruler_marker_half_w
 

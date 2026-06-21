@@ -49,8 +49,14 @@ class Layout:
     burnin_baseline_y: float
     burnin_center_x: float
     wand_line_width: float
-    # registration geometry (diagonals + centered aspect-ratio rectangle)
+    # registration geometry (diagonals + full-frame border + centered aspect rect)
     geometry_line_width: float
+    geometry_line_alpha: float
+    rect_line_width: float
+    border_rect_left: float
+    border_rect_top: float
+    border_rect_width: float
+    border_rect_height: float
     aspect_rect_left: float
     aspect_rect_top: float
     aspect_rect_width: float
@@ -73,8 +79,8 @@ def compute_layout(width: int, height: int) -> Layout:
 
     All sizes scale from ``unit = min(width, height)``. Key ratios:
 
-    * ``clock_radius = 0.30 * unit`` (three-quarters of the original 0.40 to leave
-      room for the surrounding registration geometry and the bottom ruler).
+    * ``clock_radius = 0.22 * unit`` (a compact clock that leaves room for the
+      surrounding registration geometry and the bottom ruler).
     * ``clock_line_width = max(2.0, 0.004 * unit)``;
       ``wand_line_width = max(2.0, 0.006 * unit)``;
       ``crosshair_line_width = max(1.0, 0.0015 * unit)``.
@@ -85,14 +91,17 @@ def compute_layout(width: int, height: int) -> Layout:
       timecode burn-in centred at ``cx``. All use ``round(0.045 * unit)``.
     * ``flash_radius = 0.05 * unit`` at the FIXED right-middle ``(0.85 * width,
       0.5 * height)``; ``twopop_flash_radius = 1.6 * flash_radius``.
-    * **Registration geometry**: full-frame diagonals (drawn by the renderer from the
-      corners) plus a centred rectangle sharing the frame's aspect ratio, inset to
-      ``0.92`` of the frame (so its corners land on the diagonals).
+    * **Registration geometry**: semi-transparent full-frame diagonals (drawn by the
+      renderer from the corners) and centre crosshair, plus two opaque rectangles --
+      a full-frame **border** marking the exact video extent and a smaller centred
+      rectangle (``0.66`` of the frame) sharing the frame's aspect ratio (its corners
+      land on the diagonals).
     * **Audio ruler** along the bottom (``ruler_y = 0.85 * height``, spanning
-      ``0.10..0.90 * width``): a per-frame tick scale with taller major ticks every
-      five frames and small frame-index labels, plus a moving playhead marker that
-      sits on the current frame's tick -- a linear, frame-calibrated reference for
-      spotting and measuring A/V-sync offset against the audible beep.
+      ``0.10..0.90 * width``): a per-frame tick scale **centred on zero** (the beep
+      position at the middle) with taller major ticks every five frames labelled in
+      **milliseconds** of A/V offset, plus a moving playhead marker that crosses the
+      centre exactly on the beep -- a linear, calibrated reference for spotting and
+      measuring A/V-sync offset against the audible beep.
 
     Args:
         width: Output frame width in pixels (must be positive).
@@ -113,7 +122,7 @@ def compute_layout(width: int, height: int) -> Layout:
     cy = height / 2.0
     unit = float(min(width, height))
 
-    clock_radius = 0.30 * unit
+    clock_radius = 0.22 * unit
     clock_line_width = max(2.0, 0.004 * unit)
     wand_line_width = max(2.0, 0.006 * unit)
     crosshair_line_width = max(1.0, 0.0015 * unit)
@@ -144,9 +153,28 @@ def compute_layout(width: int, height: int) -> Layout:
     flash_center_y = 0.5 * height
     twopop_flash_radius = 1.6 * flash_radius
 
-    # Registration geometry: a concentric rectangle with the frame's aspect ratio.
+    # Registration geometry. The diagonals (and the centre crosshair) are drawn
+    # semi-transparent so they read as a faint background reference rather than a
+    # distraction; the rectangles stay fully opaque because they mark real sizes.
     geometry_line_width = crosshair_line_width
-    rect_scale = 0.92
+    geometry_line_alpha = 0.5
+
+    # The two registration rectangles are opaque and a touch heavier than the
+    # hairline diagonals so the video extent is clearly visible.
+    rect_line_width = max(2.0, 0.003 * unit)
+
+    # Full-frame border rectangle marking the exact video extent. Inset by one
+    # line width so the whole stroke stays visible (a rect at the literal edge
+    # would have half its width clipped off-frame).
+    border_inset = rect_line_width
+    border_rect_left = border_inset
+    border_rect_top = border_inset
+    border_rect_width = width - 2.0 * border_inset
+    border_rect_height = height - 2.0 * border_inset
+
+    # Smaller concentric rectangle sharing the frame's aspect ratio (its corners
+    # land on the diagonals); a quick visual aspect/centering reference.
+    rect_scale = 0.66
     aspect_rect_width = rect_scale * width
     aspect_rect_height = rect_scale * height
     aspect_rect_left = (width - aspect_rect_width) / 2.0
@@ -191,6 +219,12 @@ def compute_layout(width: int, height: int) -> Layout:
         burnin_center_x=burnin_center_x,
         wand_line_width=wand_line_width,
         geometry_line_width=geometry_line_width,
+        geometry_line_alpha=geometry_line_alpha,
+        rect_line_width=rect_line_width,
+        border_rect_left=border_rect_left,
+        border_rect_top=border_rect_top,
+        border_rect_width=border_rect_width,
+        border_rect_height=border_rect_height,
         aspect_rect_left=aspect_rect_left,
         aspect_rect_top=aspect_rect_top,
         aspect_rect_width=aspect_rect_width,
