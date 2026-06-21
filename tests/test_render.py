@@ -327,14 +327,14 @@ def test_sync_info_is_bold_turquoise() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def _metro_renderer(fps: str = "24", **over) -> FrameRenderer:
-    """A 1080p renderer with the metronome active (120 bpm, 4/4, subdivision 2).
+def _metro_renderer(fps: str = "24", bpm: float = 120, **over) -> FrameRenderer:
+    """A 1080p renderer with the metronome active (4/4, subdivision 2).
 
     At 24 fps / 120 bpm there are 12 frames per beat and 6 per subdivision click.
     """
     cfg = build_config(
         fps=fps, resolution="1080p", output="o.mov", lead_seconds=8,
-        tail_seconds=2.0, bpm=120, time_sig="4/4", subdivision=2, **over,
+        tail_seconds=2.0, bpm=bpm, time_sig="4/4", subdivision=2, **over,
     )
     return FrameRenderer(cfg, _sched_for(cfg))
 
@@ -355,13 +355,25 @@ def test_metronome_active_and_deterministic() -> None:
     assert r.render_frame(base + 2) == r.render_frame(base + 2)
 
 
-def test_metronome_pendulum_reaches_extreme_on_beat() -> None:
-    """The bob is at a swing extreme on each beat and ~vertical mid-beat."""
-    r = _metro_renderer()  # 12 frames/beat
+@pytest.mark.parametrize("fps", ["24", "23.976", "30", "25"])
+@pytest.mark.parametrize("bpm", [120, 200])
+def test_metronome_bob_at_extreme_on_beat_frames(fps: str, bpm: int) -> None:
+    """The bob is at a swing extreme on exactly the frames a beat is flashed -- at
+    every rate, including fractional fps where a beat onset lands mid-frame (the
+    phase is pinned to the beat frames, not the raw sample phase)."""
+    r = _metro_renderer(fps=fps, bpm=bpm)
     be = r._metro_beats_elapsed  # noqa: SLF001
-    for f in (0, 12, 24):  # beat frames -> integer phase -> |cos| == 1
-        assert abs(math.cos(math.pi * be[f])) == pytest.approx(1.0, abs=1e-9)
-    assert abs(math.cos(math.pi * be[6])) < 0.05  # halfway -> ~vertical
+    beat_frames = np.where(r._metro_bob_level >= 0.999)[0]  # noqa: SLF001
+    assert beat_frames.size > 2
+    for f in beat_frames:
+        assert abs(math.cos(math.pi * be[f])) == pytest.approx(1.0, abs=1e-6)
+
+
+def test_metronome_pendulum_vertical_mid_beat() -> None:
+    """Halfway between beats the pendulum passes through vertical (cos ~ 0)."""
+    r = _metro_renderer()  # 24 fps / 120 bpm -> 12 frames/beat, midpoint frame 6
+    be = r._metro_beats_elapsed  # noqa: SLF001
+    assert abs(math.cos(math.pi * be[6])) < 0.05
 
 
 def test_metronome_bob_flashes_on_beats_downbeat_accented() -> None:
@@ -376,6 +388,16 @@ def test_metronome_bob_flashes_on_beats_downbeat_accented() -> None:
     # subdivision click at the half-beat (frame 6) pulses the pivot, not the bob.
     assert r._metro_pivot_level[6] > 0.0  # noqa: SLF001
     assert r._metro_bob_level[6] == 0.0  # noqa: SLF001
+
+
+def test_metronome_high_bpm_bob_ticks_discretely() -> None:
+    """At high (but still sub-frame-rate) bpm the bob flash decays to dark between
+    beats rather than glowing steadily (the decay is capped to the beat interval)."""
+    r = _metro_renderer(bpm=720)  # 24 fps -> beat = 2 frames
+    ff = r.schedule.ffop_frame
+    bob = r._metro_bob_level[:ff]  # noqa: SLF001
+    assert bool((bob == 0.0).any())     # dark frames between beats -> discrete ticks
+    assert bool((bob >= 0.999).any())   # still flashes on the beat
 
 
 def test_metronome_renders_accent_in_top_center_band() -> None:

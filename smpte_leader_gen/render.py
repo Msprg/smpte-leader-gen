@@ -477,21 +477,26 @@ class FrameRenderer:
             dtype=np.int64,
         )
 
-        # Pendulum phase in beats at each frame start, clamped to >= 0 (the bob
-        # holds at its start extreme until the grid begins).
-        beats = (
-            frame_starts[:n_frames] - self._metro_start_sample
-        ) / self._metro_beat_samples
-        self._metro_beats_elapsed = np.maximum(beats, 0.0)
-
         # Per-frame flash envelopes: bob (beats/downbeats) and pivot (every click).
         self._metro_bob_level = np.zeros(n_frames, dtype=np.float64)
         self._metro_bob_accent = np.zeros(n_frames, dtype=bool)
         self._metro_pivot_level = np.zeros(n_frames, dtype=np.float64)
 
-        bob_decay = max(2, round(0.09 * float(fps)))    # ~90 ms bob flash
-        pivot_decay = max(2, round(0.05 * float(fps)))  # ~50 ms pivot tick
+        # Flash decay windows (~90 ms bob, ~50 ms pivot), but always at least one
+        # frame SHORT of the gap to the next onset -- otherwise at high bpm (beat/
+        # click no longer than the window) each onset re-lights before the previous
+        # decays and the flash reads as a steady glow instead of discrete ticks.
+        # Onsets land round(k*interval) frames apart, so floor(interval)-1 leaves a
+        # dark frame. (When the click rate reaches the frame rate -- e.g. dense
+        # subdivisions at high bpm -- discrete ticks are simply not representable.)
+        beat_interval_frames = 60.0 * float(fps) / cfg.bpm
+        sub_interval_frames = beat_interval_frames / cfg.subdivision
+        bob_decay = max(1, min(max(2, round(0.09 * float(fps))),
+                               int(beat_interval_frames) - 1))
+        pivot_decay = max(1, min(max(2, round(0.05 * float(fps))),
+                                 int(sub_interval_frames) - 1))
 
+        beat_frames: list[int] = []  # frame of each beat onset, in beat order
         for sample, role in metronome_click_samples(sched, cfg):
             f0 = int(np.searchsorted(frame_starts, sample, side="right")) - 1
             if f0 < 0:
@@ -505,6 +510,28 @@ class FrameRenderer:
                     bob_decay,
                     role == "accent",
                 )
+                beat_frames.append(f0)
+
+        # Pendulum phase (in beats) per frame. Pin the phase to the beat-onset
+        # FRAMES (the frames that flash and that contain the audible click) so the
+        # bob reaches a swing extreme on exactly those frames at any rate: at
+        # fractional fps a beat lands mid-frame, so a raw sample phase would leave
+        # the arm ~1-2 deg short of the extreme on the flash frame. Linear
+        # interpolation across beat frames keeps the motion smooth. Fall back to
+        # the continuous sample phase when the beat grid is too sparse (<2 beats)
+        # or too dense (sub-frame beats) to pin.
+        bf = np.asarray(beat_frames, dtype=np.float64)
+        if bf.size >= 2 and bool(np.all(np.diff(bf) > 0)):
+            self._metro_beats_elapsed = np.interp(
+                np.arange(n_frames, dtype=np.float64),
+                bf,
+                np.arange(bf.size, dtype=np.float64),
+            )
+        else:
+            beats = (
+                frame_starts[:n_frames] - self._metro_start_sample
+            ) / self._metro_beat_samples
+            self._metro_beats_elapsed = np.maximum(beats, 0.0)
 
     @staticmethod
     def _fill_flash(
