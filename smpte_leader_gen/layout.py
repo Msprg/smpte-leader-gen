@@ -224,7 +224,7 @@ def compute_layout(width: int, height: int) -> Layout:
     # border, with its first line just below the horizontal centre line (clear of
     # the clock/number to its right, which start well past where the text ends).
     syncinfo_font_px = round(0.020 * unit)
-    syncinfo_left_x = 0.025 * width
+    syncinfo_left_x = 0.0125 * width
     syncinfo_top_y = 0.520 * height
     syncinfo_line_h = 0.024 * height
 

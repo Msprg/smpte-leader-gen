@@ -312,10 +312,10 @@ def test_sync_info_is_bold_turquoise() -> None:
     band = r._static.astype(np.int16)  # noqa: SLF001
     ys, xs = np.where(np.abs(band - target).sum(axis=2) < 60)
     assert len(ys) > 0  # turquoise text present
-    # Hugs the left border (ink starts near the new syncinfo_left_x = 0.025 w) and
+    # Hugs the left border (ink starts near the new syncinfo_left_x = 0.0125 w) and
     # its first line sits just below the horizontal centre line. Bounds are chosen
     # to FAIL if the x move or the raised y position were reverted.
-    assert xs.min() < cfg.width * 0.04          # new ~0.026 w passes; old 0.045 w fails
+    assert xs.min() < cfg.width * 0.025         # new ~0.013 w passes; old 0.025/0.045 w fails
     assert cfg.height * 0.50 < ys.min() < cfg.height * 0.55  # first line just below centre
     assert ys.max() < cfg.height * 0.62         # block stays upper-middle; old 0.78/0.81 fail
     assert ys.max() < r.layout.ruler_y          # never reaches the ruler
