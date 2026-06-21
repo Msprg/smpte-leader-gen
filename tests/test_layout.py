@@ -91,8 +91,6 @@ def test_all_sizes_positive(width: int, height: int) -> None:
         layout.ruler_tick_major_h,
         layout.ruler_label_font_px,
         layout.ruler_label_y,
-        layout.ruler_incr_label_font_px,
-        layout.ruler_incr_label_y,
         layout.ruler_marker_h,
         layout.ruler_marker_half_w,
         layout.syncinfo_font_px,
@@ -197,11 +195,6 @@ def test_ruler_geometry(width: int, height: int) -> None:
     # Labels sit below the baseline; major ticks are taller than minor.
     assert layout.ruler_label_y > layout.ruler_y
     assert layout.ruler_tick_major_h > layout.ruler_tick_minor_h
-    # The +-1 "fine increment" labels sit on a dedicated, smaller row just below
-    # the major-tick label row.
-    assert layout.ruler_incr_label_y > layout.ruler_label_y
-    assert layout.ruler_incr_label_font_px < layout.ruler_label_font_px
-    assert layout.ruler_incr_label_y < height  # stays on-frame
 
 
 @pytest.mark.parametrize(("width", "height"), PRESETS)

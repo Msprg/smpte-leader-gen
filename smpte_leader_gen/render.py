@@ -140,9 +140,6 @@ class FrameRenderer:
         self._font_timer = _load_font(FONT_REGULAR, self.layout.timer_font_px)
         self._font_burnin = _load_font(FONT_REGULAR, self.layout.burnin_font_px)
         self._font_ruler = _load_font(FONT_REGULAR, self.layout.ruler_label_font_px)
-        self._font_ruler_incr = _load_font(
-            FONT_REGULAR, self.layout.ruler_incr_label_font_px
-        )
 
         # Frame-counter denominator: the actual fps as a decimal, so rates that
         # differ only by a fraction (e.g. 23.976 vs 24) are visually distinct.
@@ -322,22 +319,19 @@ class FrameRenderer:
             ctx.stroke()
 
     def _draw_ruler_labels(self, arr: np.ndarray) -> None:
-        """Draw the ruler's millisecond labels (Pillow), in two rows.
+        """Draw the ruler's millisecond labels (Pillow), all on one row.
 
-        The main row labels the centred zero and every major (5-frame) tick with its
-        A/V offset in milliseconds; the centre reads ``0`` in the accent color. The
-        two ticks flanking zero (offsets ``+-1``) are labelled on a dedicated,
-        slightly smaller row just below, so the per-frame increment (ms per frame) is
-        always readable without crowding the centre ``0`` at high frame rates (where
-        the per-frame ticks pack too tightly to label in line).
+        Each major tick (every fifth frame) is labelled with its A/V offset in
+        milliseconds, and the two ticks flanking zero (offsets ``+-1``) are labelled
+        too -- inline, at the same size -- so the per-frame increment is legible.
+        The centre reads ``0`` in the accent color.
         """
         lay = self.layout
         image = Image.fromarray(arr, mode="RGB")
         draw = ImageDraw.Draw(image)
-
-        # Main row: the centred zero and every major (5-frame) tick.
         for offset in self._ruler_tick_range():
-            if (offset % self._ruler_major) != 0:
+            # Major ticks (every fifth frame) plus the immediate neighbours of zero.
+            if (offset % self._ruler_major) != 0 and abs(offset) != 1:
                 continue
             x = self._ruler_tick_x(offset)
             if offset == 0:
@@ -351,21 +345,6 @@ class FrameRenderer:
                 text,
                 font=self._font_ruler,
                 fill=color,
-                anchor="mm",
-            )
-
-        # Increment row: the +-1 ticks on their own lower row (if on the ruler).
-        tick_range = self._ruler_tick_range()
-        for offset in (-1, 1):
-            if offset not in tick_range:
-                continue
-            x = self._ruler_tick_x(offset)
-            text = f"{round(offset * self._frame_ms):+d}"
-            draw.text(
-                (x, lay.ruler_incr_label_y),
-                text,
-                font=self._font_ruler_incr,
-                fill=self._fg255,
                 anchor="mm",
             )
         np.copyto(arr, np.asarray(image))
