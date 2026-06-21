@@ -109,9 +109,11 @@ def compute_layout(width: int, height: int) -> Layout:
       ``crosshair_line_width = max(1.0, 0.0015 * unit)``.
     * ``number_font_px = round(0.5 * clock_radius)`` -- centred at ``C`` (under the wand).
     * Top readout row at ``0.085 * height``: the ``x/N`` frame counter is at the
-      **top-left** (``0.06 * width``, left-anchored by the renderer), the digital
-      timer at the **top-right** (``0.94 * width``, right-anchored), and the optional
-      timecode burn-in centred at ``cx``. All use ``round(0.045 * unit)``.
+      **top-left** (``0.06 * width``, left-anchored by the renderer) and the digital
+      timer at the **top-right** (``0.94 * width``, right-anchored). The optional
+      timecode burn-in is centred **just below the countdown circle**
+      (``cy + clock_radius + 0.035 * height``) so it clears the top row (and the
+      metronome dots there). All use ``round(0.045 * unit)``.
     * ``flash_radius = 0.05 * unit`` at the FIXED right-middle ``(0.90 * width,
       0.5 * height)`` -- clear of the inner aspect rectangle's right edge;
       ``twopop_flash_radius = 1.6 * flash_radius``.
@@ -165,7 +167,7 @@ def compute_layout(width: int, height: int) -> Layout:
 
     number_font_px = round(0.5 * clock_radius)
 
-    # Top readout row: counter (left), burn-in (center), timer (right).
+    # Top readout row: counter (left), timer (right).
     top_row_y = 0.085 * height
     readout_font_px = round(0.045 * unit)
 
@@ -177,9 +179,12 @@ def compute_layout(width: int, height: int) -> Layout:
     timer_baseline_y = top_row_y
     timer_center_x = 0.94 * width
 
+    # Timecode burn-in: centred just below the countdown circle, so it never
+    # overlaps the top readout row / metronome dots above, the big number at the
+    # centre, or the ruler below (clock bottom ~0.72 h, ruler at 0.90 h).
     burnin_font_px = readout_font_px
-    burnin_baseline_y = top_row_y
     burnin_center_x = cx
+    burnin_baseline_y = cy + clock_radius + 0.035 * height
 
     number_center_x = cx
     number_center_y = cy

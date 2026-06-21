@@ -153,11 +153,19 @@ def test_flash_disc_fixed_right_middle(width: int, height: int) -> None:
 
 
 @pytest.mark.parametrize(("width", "height"), PRESETS)
-def test_burnin_top_center(width: int, height: int) -> None:
+def test_burnin_below_clock(width: int, height: int) -> None:
     layout = compute_layout(width, height)
-    # Burn-in is centred in the top row (between the counter and timer).
+    # Burn-in is horizontally centred, just below the countdown circle.
     assert layout.burnin_center_x == pytest.approx(width / 2.0)
-    assert layout.burnin_baseline_y == pytest.approx(0.085 * height)
+    assert layout.burnin_baseline_y == pytest.approx(
+        layout.cy + layout.clock_radius + 0.035 * height
+    )
+    # Below the clock's bottom edge and above the bottom ruler (clear of both).
+    clock_bottom = layout.cy + layout.clock_radius
+    assert layout.burnin_baseline_y > clock_bottom
+    assert layout.burnin_baseline_y < layout.ruler_y
+    # Well clear of the top readout row (so it never collides with the dots there).
+    assert layout.burnin_baseline_y > 0.5 * height
 
 
 @pytest.mark.parametrize(("width", "height"), PRESETS)
