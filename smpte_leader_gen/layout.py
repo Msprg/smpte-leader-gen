@@ -86,11 +86,15 @@ class Layout:
     metro_bob_radius: float
     metro_arm_width: float
     metro_pivot_radius: float
-    # dots style (a row of beat lights; the downbeat is the larger accent dot)
+    # dots style: one row of beat lights (downbeat = larger accent dot), plus a
+    # second, lower row of subdivision lights when --subdivision > 1.
     metro_dot_row_y: float
+    metro_dot_row_gap: float
     metro_dot_radius: float
     metro_dot_accent_radius: float
+    metro_dot_sub_radius: float
     metro_dot_spacing: float
+    metro_dot_sub_spacing: float
 
 
 def compute_layout(width: int, height: int) -> Layout:
@@ -126,9 +130,11 @@ def compute_layout(width: int, height: int) -> Layout:
       against the audible beep.
     * **Metronome animation** (only with ``--bpm``): a top-centre widget in the
       band between the top readout and the clock, drawn in one of two styles. The
-      **default** is a row of beat **dots** (``metro_dot_row_y = 0.17 * height``)
-      that light red one beat at a time, the bar's downbeat being the larger accent
-      dot. The optional **pendulum** style is an inverted-pendulum widget
+      **default** is a row of beat **dots** (``metro_dot_row_y = 0.135 * height``,
+      above the inner aspect rectangle) that light red one beat at a time, the
+      bar's downbeat being the larger accent dot; with ``--subdivision > 1`` a
+      second lower row of subdivision dots is added. The optional **pendulum**
+      style is an inverted-pendulum widget
       (``metro_pivot_y = 0.25 * height``, arm ``0.108 * height``) that swings one
       beat per half-swing. Either way the renderer animates/flashes it in lock-step
       with the clicks.
@@ -242,16 +248,22 @@ def compute_layout(width: int, height: int) -> Layout:
     metro_bob_radius = 0.020 * unit
     metro_arm_width = max(2.0, 0.006 * unit)
     metro_pivot_radius = 0.012 * unit
-    # Dots style (default): a single horizontal row of beat lights centred at
-    # ``metro_dot_row_y`` ~= 0.17 h. Each beat lights its dot red in turn; the
-    # bar's downbeat is the larger accent dot. ``metro_dot_spacing`` is the
-    # centre-to-centre step (the renderer shrinks it only if a large bar count
-    # would overflow the frame width). The row top (~0.148 h with the accent dot)
-    # clears the readout, the bottom (~0.192 h) clears the clock.
-    metro_dot_row_y = 0.170 * height
-    metro_dot_radius = 0.014 * unit
-    metro_dot_accent_radius = 0.022 * unit
-    metro_dot_spacing = 0.065 * unit
+    # Dots style (default): rows of beat lights centred at ``metro_center_x`` in
+    # the band above the inner aspect rectangle (whose top edge is at 0.17 h). A
+    # row of beat dots sits at ``metro_dot_row_y`` (the bar's downbeat is the
+    # larger accent dot); when --subdivision > 1 a second, smaller row of
+    # subdivision dots is drawn ``metro_dot_row_gap`` below it (the two rows then
+    # straddle ``metro_dot_row_y``). ``metro_dot_spacing`` / ``metro_dot_sub_spacing``
+    # are the centre-to-centre steps (the renderer shrinks them only if a large
+    # count would overflow the frame width). The rows clear the top readout above
+    # and stay above the inner rectangle below (sub row bottom ~0.16 h < 0.17 h).
+    metro_dot_row_y = 0.135 * height
+    metro_dot_row_gap = 0.034 * height
+    metro_dot_radius = 0.013 * unit
+    metro_dot_accent_radius = 0.017 * unit
+    metro_dot_sub_radius = 0.009 * unit
+    metro_dot_spacing = 0.060 * unit
+    metro_dot_sub_spacing = 0.045 * unit
 
     return Layout(
         width=width,
@@ -311,7 +323,10 @@ def compute_layout(width: int, height: int) -> Layout:
         metro_arm_width=metro_arm_width,
         metro_pivot_radius=metro_pivot_radius,
         metro_dot_row_y=metro_dot_row_y,
+        metro_dot_row_gap=metro_dot_row_gap,
         metro_dot_radius=metro_dot_radius,
         metro_dot_accent_radius=metro_dot_accent_radius,
+        metro_dot_sub_radius=metro_dot_sub_radius,
         metro_dot_spacing=metro_dot_spacing,
+        metro_dot_sub_spacing=metro_dot_sub_spacing,
     )

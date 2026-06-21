@@ -541,48 +541,69 @@ class FrameRenderer:
         frame_starts: np.ndarray,
         clicks: list[tuple[int, str]],
     ) -> None:
-        """Precompute the per-frame, per-beat flash levels for the dots style.
+        """Precompute the per-frame flash levels for the dots style.
 
-        There is one dot per beat of the bar (``time_sig_beats``). Each beat lights
-        its dot, which then fades over (up to) one beat interval, so the lit dot
-        sweeps across the row one beat at a time -- a row of LEDs marching in time.
-        The same dot only re-lights a full bar later, so the long decay reads as a
-        clean travelling light rather than a steady glow. Subdivision clicks do not
-        light a dot (the dots track beats, not subdivisions).
+        The top row has one dot per beat of the bar (``time_sig_beats``); each beat
+        lights its dot (the bar's downbeat, position 0, being the larger accent dot)
+        and it fades over ~one beat, so the lit beat sweeps across the row a beat at
+        a time. When ``--subdivision > 1`` a second, lower row of ``subdivision``
+        dots tracks the subdivision **within the current beat**: every click lights
+        the sub-pulse dot at ``k % subdivision`` (the beat itself is sub-pulse 0),
+        fading over ~one subdivision so the lower row marches the finer pulse. Every
+        audible click is thus represented (beats on top, every sub cue below). Each
+        dot only re-lights a full cycle later, so the decays never read as a steady
+        glow.
         """
         cfg = self.config
         fps = self.schedule.fps
         lay = self.layout
 
         n_beats = max(1, cfg.time_sig_beats)
+        n_subs = max(1, cfg.subdivision)
         self._metro_n_beats = n_beats
+        self._metro_n_subs = n_subs
+        self._metro_two_rows = n_subs > 1
 
-        # Fit the row within the central 80% of the frame width; shrink the
-        # centre-to-centre spacing only if a large bar count would overflow.
-        spacing = lay.metro_dot_spacing
+        # Fit each row within the central 80% of the frame width; shrink the
+        # centre-to-centre spacing only if a large count would overflow.
         max_w = 0.80 * float(self._width)
-        if n_beats > 1 and (n_beats - 1) * spacing > max_w:
-            spacing = max_w / (n_beats - 1)
-        self._metro_dot_spacing = spacing
+        self._metro_beat_spacing = _fit_spacing(lay.metro_dot_spacing, n_beats, max_w)
+        self._metro_sub_spacing = _fit_spacing(lay.metro_dot_sub_spacing, n_subs, max_w)
 
-        # Per-frame flash level for each beat dot (column == beat position in bar).
-        self._metro_dot_level = np.zeros((n_frames, n_beats), dtype=np.float64)
+        # Per-frame flash level per dot (column == position in bar / in beat).
+        self._metro_beats_level = np.zeros((n_frames, n_beats), dtype=np.float64)
+        self._metro_subs_level = (
+            np.zeros((n_frames, n_subs), dtype=np.float64)
+            if self._metro_two_rows
+            else None
+        )
 
         beat_interval_frames = 60.0 * float(fps) / cfg.bpm
-        dot_decay = max(2, int(round(beat_interval_frames)))
+        sub_interval_frames = beat_interval_frames / n_subs
+        beat_decay = max(2, int(round(beat_interval_frames)))
+        sub_decay = max(2, int(round(sub_interval_frames)))
 
-        # Walk the beats in order; the k-th beat (skipping subdivisions) lights the
-        # dot at bar position ``k % n_beats`` (position 0 is the accented downbeat).
+        # Walk the clicks in order. Beats (and the accent) advance the bar position
+        # and light a top-row dot; every click lights a bottom-row sub-pulse dot at
+        # its position within the beat (which resets to 0 on each beat).
         beat_ordinal = 0
+        sub_pos = 0
         for sample, role in clicks:
-            if role == "sub":
-                continue
-            pos = beat_ordinal % n_beats
-            beat_ordinal += 1
             f0 = int(np.searchsorted(frame_starts, sample, side="right")) - 1
-            if f0 < 0:
-                continue
-            self._fill_flash(self._metro_dot_level[:, pos], None, f0, dot_decay, False)
+            if role in ("beat", "accent"):
+                beat_pos = beat_ordinal % n_beats
+                beat_ordinal += 1
+                sub_pos = 0
+                if f0 >= 0:
+                    self._fill_flash(
+                        self._metro_beats_level[:, beat_pos], None, f0, beat_decay, False
+                    )
+            else:  # subdivision click between beats
+                sub_pos += 1
+            if self._metro_subs_level is not None and f0 >= 0:
+                self._fill_flash(
+                    self._metro_subs_level[:, sub_pos % n_subs], None, f0, sub_decay, False
+                )
 
     @staticmethod
     def _fill_flash(
@@ -624,34 +645,73 @@ class FrameRenderer:
             self._draw_metronome_dots(ctx, i)
 
     def _draw_metronome_dots(self, ctx: cairo.Context, i: int) -> None:
-        """Draw the top-center row of beat dots for frame ``i``.
+        """Draw the top-center beat (and subdivision) dot rows for frame ``i``.
 
-        Each dot is a faint socket ring with a filled core: dim at rest, flashing
-        toward the accent color on its beat. The bar's downbeat (position 0) is the
+        The top row is one dot per beat; the bar's downbeat (position 0) is the
         larger accent dot, so the accent reads by size as well as by being lit
-        first. The lit dot sweeps left-to-right across the bar, one beat at a time.
+        first, and the lit beat sweeps across the row a beat at a time. When the
+        metronome subdivides, a second, smaller row below tracks the subdivision
+        pulse within the beat. Each dot is a faint socket ring with a filled core:
+        dim at rest, flashing toward the accent color on its cue.
         """
         lay = self.layout
-        n = self._metro_n_beats
-        spacing = self._metro_dot_spacing
-        row_w = (n - 1) * spacing
-        x0 = lay.metro_center_x - row_w / 2.0
-        y = lay.metro_dot_row_y
 
+        # With two rows, straddle the row anchor; with one, sit on it.
+        if self._metro_two_rows:
+            beats_y = lay.metro_dot_row_y - lay.metro_dot_row_gap / 2.0
+            subs_y = lay.metro_dot_row_y + lay.metro_dot_row_gap / 2.0
+        else:
+            beats_y = lay.metro_dot_row_y
+
+        # Beat row: downbeat (pos 0) is the larger accent dot, the rest are beats.
+        self._draw_dot_row(
+            ctx,
+            beats_y,
+            self._metro_beat_spacing,
+            self._metro_beats_level[i],
+            lambda pos: (
+                lay.metro_dot_accent_radius if pos == 0 else lay.metro_dot_radius
+            ),
+        )
+
+        # Subdivision row (only when subdividing): uniform smaller dots.
+        if self._metro_subs_level is not None:
+            self._draw_dot_row(
+                ctx,
+                subs_y,
+                self._metro_sub_spacing,
+                self._metro_subs_level[i],
+                lambda pos: lay.metro_dot_sub_radius,
+            )
+
+    def _draw_dot_row(
+        self,
+        ctx: cairo.Context,
+        y: float,
+        spacing: float,
+        levels: np.ndarray,
+        radius_for_pos,
+    ) -> None:
+        """Draw one centred horizontal row of dots at ``y``.
+
+        ``levels`` holds the per-dot flash level (0 at rest .. 1 fully lit) and
+        ``radius_for_pos(pos)`` gives each dot's resting radius. Every dot is a
+        faint socket ring with a filled core that lights toward the accent color.
+        """
+        lay = self.layout
+        n = int(levels.shape[0])
+        x0 = lay.metro_center_x - (n - 1) * spacing / 2.0
         resting = _blend(self._bg, self._fg, 0.30)
-        levels = self._metro_dot_level[i]
         for pos in range(n):
             cx = x0 + pos * spacing
             level = float(levels[pos])
-            base_r = (
-                lay.metro_dot_accent_radius if pos == 0 else lay.metro_dot_radius
-            )
-            # Faint socket ring so the whole bar of beats is always visible.
+            base_r = radius_for_pos(pos)
+            # Faint socket ring so the whole row is always visible.
             ctx.set_source_rgba(*self._fg, lay.geometry_line_alpha)
             ctx.set_line_width(lay.crosshair_line_width)
             ctx.arc(cx, y, base_r, 0.0, 2.0 * math.pi)
             ctx.stroke()
-            # Filled core: dim at rest, flashing toward the accent on the beat.
+            # Filled core: dim at rest, flashing toward the accent on the cue.
             col = _blend(resting, self._accent, level)
             r = base_r * (1.0 + 0.10 * level)
             ctx.set_source_rgb(*col)
@@ -1114,6 +1174,18 @@ class FrameRenderer:
 # ---------------------------------------------------------------------------
 # Module-level helpers (self-contained; deterministic)
 # ---------------------------------------------------------------------------
+
+
+def _fit_spacing(spacing: float, count: int, max_w: float) -> float:
+    """Centre-to-centre dot spacing, shrunk only if the row would overflow ``max_w``.
+
+    A row of ``count`` dots spans ``(count - 1) * spacing``; if that exceeds
+    ``max_w`` the spacing is reduced so the row exactly fits, otherwise the nominal
+    spacing is kept. ``count <= 1`` keeps the nominal spacing (a single dot).
+    """
+    if count > 1 and (count - 1) * spacing > max_w:
+        return max_w / (count - 1)
+    return spacing
 
 
 def _format_fps(num: int, den: int) -> str:

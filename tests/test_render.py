@@ -444,22 +444,22 @@ def test_metronome_style_defaults_to_dots() -> None:
     assert cfg.metronome_style == "dots"
     r = FrameRenderer(cfg, _sched_for(cfg))
     assert r._metro_style == "dots"  # noqa: SLF001
-    assert hasattr(r, "_metro_dot_level")
+    assert hasattr(r, "_metro_beats_level")
     assert not hasattr(r, "_metro_bob_level")  # pendulum-only state absent
 
 
 def test_metronome_dots_one_column_per_beat() -> None:
-    """There is exactly one dot (level column) per beat of the bar."""
+    """There is exactly one beat dot (level column) per beat of the bar."""
     r = _dots_renderer(time_sig="3/4")
     assert r._metro_n_beats == 3  # noqa: SLF001
-    assert r._metro_dot_level.shape[1] == 3  # noqa: SLF001
+    assert r._metro_beats_level.shape[1] == 3  # noqa: SLF001
 
 
 def test_metronome_dots_light_in_order() -> None:
     """Each beat lights the next dot in turn and the bar wraps to the downbeat;
     between beats the just-lit dot fades while no other dot is lit."""
     r = _dots_renderer()  # 24 fps / 120 bpm -> 12 frames/beat, 4 beats
-    lvl = r._metro_dot_level  # noqa: SLF001
+    lvl = r._metro_beats_level  # noqa: SLF001
     for frame, lit in [(0, 0), (12, 1), (24, 2), (36, 3), (48, 0)]:
         assert lvl[frame, lit] == pytest.approx(1.0)
         assert int(np.argmax(lvl[frame])) == lit  # exactly that dot is brightest
@@ -467,6 +467,29 @@ def test_metronome_dots_light_in_order() -> None:
     assert 0.0 < lvl[6, 0] < 1.0
     assert lvl[6, 1] == 0.0
     assert lvl[6, 2] == 0.0
+
+
+def test_metronome_dots_single_row_without_subdivision() -> None:
+    """With --subdivision 1 there is only the beat row (no subdivision row)."""
+    r = _dots_renderer()  # subdivision defaults to 1
+    assert r._metro_two_rows is False  # noqa: SLF001
+    assert r._metro_subs_level is None  # noqa: SLF001
+
+
+def test_metronome_dots_second_row_tracks_subdivision() -> None:
+    """With --subdivision 2 a second row of subdivision dots appears and marches
+    the sub-pulse within the beat: dot 0 on each beat, dot 1 on each off-beat."""
+    r = _dots_renderer(subdivision=2)  # 24fps/120bpm -> 12 f/beat, 6 f/sub
+    assert r._metro_two_rows is True  # noqa: SLF001
+    subs = r._metro_subs_level  # noqa: SLF001
+    assert subs is not None and subs.shape[1] == 2
+    # On the beats the on-beat sub dot (0) is lit; on the off-beats sub dot 1 is.
+    for f in (0, 12, 24, 36):
+        assert int(np.argmax(subs[f])) == 0 and subs[f, 0] == pytest.approx(1.0)
+    for f in (6, 18, 30, 42):
+        assert int(np.argmax(subs[f])) == 1 and subs[f, 1] == pytest.approx(1.0)
+    # The off-beat (frame 6) lights only the sub row, not the beat row.
+    assert r._metro_beats_level[6].max() < 1.0  # noqa: SLF001  beat is fading
 
 
 def test_metronome_dots_downbeat_drawn_larger_in_accent() -> None:
@@ -481,13 +504,28 @@ def test_metronome_dots_downbeat_drawn_larger_in_accent() -> None:
         arr = np.frombuffer(r.render_frame(frame), dtype=np.uint8).reshape(
             cfg.height, cfg.width, 3
         ).astype(np.int16)
-        band = arr[int(0.13 * cfg.height):int(0.21 * cfg.height), :]
+        band = arr[int(0.10 * cfg.height):int(0.17 * cfg.height), :]
         return int((np.abs(band - accent).sum(axis=2) < 40).sum())
 
     downbeat = red_count(0)   # accent dot (larger), lit
     beat = red_count(12)      # regular beat dot, lit
     assert downbeat > 0 and beat > 0
     assert downbeat > beat    # the downbeat dot is drawn larger
+
+
+def test_metronome_dots_stay_above_inner_rectangle() -> None:
+    """No dot ink falls on or below the inner aspect rectangle's top edge."""
+    r = _dots_renderer(subdivision=2)
+    cfg = r.config
+    lay = r.layout
+    accent = np.array(_rgbf_to_rgb255(cfg.accent_color), dtype=np.int16)
+    arr = np.frombuffer(r.render_frame(0), dtype=np.uint8).reshape(
+        cfg.height, cfg.width, 3
+    ).astype(np.int16)
+    # Look for any lit (accent) dot pixels at or below the inner rect's top edge.
+    below = arr[int(lay.aspect_rect_top):, :]
+    red_below_in_top = (np.abs(below[: int(0.05 * cfg.height)] - accent).sum(axis=2) < 40)
+    assert int(red_below_in_top.sum()) == 0
 
 
 def test_metronome_dots_active_and_deterministic() -> None:
@@ -500,10 +538,10 @@ def test_metronome_dots_active_and_deterministic() -> None:
 
 @pytest.mark.parametrize("fps", ["24", "23.976", "30", "25"])
 def test_metronome_dots_one_dot_lit_per_beat_onset(fps: str) -> None:
-    """At every rate, each beat onset frame has exactly one fully-lit dot (the
+    """At every rate, each beat onset frame has exactly one fully-lit beat dot (the
     flashes stay locked to the drift-free click grid)."""
     r = _dots_renderer(fps=fps)
-    lvl = r._metro_dot_level  # noqa: SLF001
+    lvl = r._metro_beats_level  # noqa: SLF001
     ff = r.schedule.ffop_frame
     onset_frames = np.where(np.isclose(lvl[:ff].max(axis=1), 1.0))[0]
     assert onset_frames.size > 2

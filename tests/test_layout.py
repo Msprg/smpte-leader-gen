@@ -104,9 +104,12 @@ def test_all_sizes_positive(width: int, height: int) -> None:
         layout.metro_arm_width,
         layout.metro_pivot_radius,
         layout.metro_dot_row_y,
+        layout.metro_dot_row_gap,
         layout.metro_dot_radius,
         layout.metro_dot_accent_radius,
+        layout.metro_dot_sub_radius,
         layout.metro_dot_spacing,
+        layout.metro_dot_sub_spacing,
     ]
     for value in positive_fields:
         assert value > 0
@@ -223,21 +226,31 @@ def test_metronome_widget_in_top_band(width: int, height: int) -> None:
 
 
 @pytest.mark.parametrize(("width", "height"), PRESETS)
-def test_metronome_dot_row_in_top_band(width: int, height: int) -> None:
+def test_metronome_dot_rows_above_inner_rectangle(width: int, height: int) -> None:
     layout = compute_layout(width, height)
-    # Centred horizontally, in the top band.
+    # Centred horizontally, in the top band above the inner aspect rectangle.
     assert layout.metro_center_x == pytest.approx(width / 2.0)
-    assert layout.metro_dot_row_y == pytest.approx(0.170 * height)
-    # The largest (accent) dot clears the top readout row above and the clock below.
-    dot_top = layout.metro_dot_row_y - layout.metro_dot_accent_radius
-    dot_bottom = layout.metro_dot_row_y + layout.metro_dot_accent_radius
-    clock_top = layout.cy - layout.clock_radius
-    assert dot_top > 0.11 * height
-    assert dot_bottom < clock_top
-    # The downbeat/accent dot is larger than a regular beat dot, and adjacent dots
-    # never touch at the default centre-to-centre spacing.
+    assert layout.metro_dot_row_y == pytest.approx(0.135 * height)
+
+    # Size hierarchy: downbeat (accent) > beat > subdivision dot.
     assert layout.metro_dot_accent_radius > layout.metro_dot_radius
+    assert layout.metro_dot_radius > layout.metro_dot_sub_radius
+    # Adjacent dots never touch at the default centre-to-centre spacing.
     assert layout.metro_dot_spacing > 2.0 * layout.metro_dot_accent_radius
+    assert layout.metro_dot_sub_spacing > 2.0 * layout.metro_dot_sub_radius
+
+    # Single row (no subdivision): the accent dot clears the very top and stays
+    # above the inner aspect rectangle's top edge (no overlap with it).
+    single_bottom = layout.metro_dot_row_y + layout.metro_dot_accent_radius
+    assert layout.metro_dot_row_y - layout.metro_dot_accent_radius > 0.09 * height
+    assert single_bottom < layout.aspect_rect_top
+
+    # Two rows (subdividing): beats above the anchor, subs below; the whole stack
+    # clears the top and still stays above the inner rectangle.
+    beats_y = layout.metro_dot_row_y - layout.metro_dot_row_gap / 2.0
+    subs_y = layout.metro_dot_row_y + layout.metro_dot_row_gap / 2.0
+    assert beats_y - layout.metro_dot_accent_radius > 0.09 * height
+    assert subs_y + layout.metro_dot_sub_radius < layout.aspect_rect_top
 
 
 def test_layout_is_frozen() -> None:

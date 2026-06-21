@@ -170,10 +170,13 @@ deliberately **distinct from the 1 kHz sync beep**.
 Whenever `--bpm` is set, a top-center animation appears, in one of two styles
 (`--metronome-style`):
 
-- **`dots`** (default): a single horizontal row of beat lights, one per beat of
-  the bar. Each beat lights its dot red in turn — the lit light marches across the
-  row — and the bar's downbeat is the larger accent dot, so the downbeat reads by
-  size as well as colour. Subdivisions are not shown (the dots track beats).
+- **`dots`** (default): a horizontal row of beat lights, one per beat of the bar.
+  Each beat lights its dot red in turn — the lit light marches across the row — and
+  the bar's downbeat is the larger accent dot, so the downbeat reads by size as
+  well as colour. With `--subdivision > 1` a second, smaller row appears below it
+  and marches the subdivision pulse within the beat, so every audible click is
+  represented (beats on top, sub-pulses below). The rows sit above the inner
+  aspect rectangle.
 - **`pendulum`**: an inverted "Maelzel" pendulum that swings one beat per
   half-swing, reaching an extreme exactly on each beat; the bob lights up on every
   beat (brighter, with a ring, on the downbeat) and the pivot pulses on every
