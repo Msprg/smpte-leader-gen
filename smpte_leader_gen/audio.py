@@ -235,6 +235,17 @@ def metronome_click_samples(schedule: Schedule, config: Config) -> list[tuple[in
             clicks.append((sample, role))
         k += 1
 
+    # With --end-align but not --end-cue, the leader is meant to end *just before*
+    # the next period's first cue (the boundary the end aligned to). Because the
+    # file end is frame-quantized it can land a few hundred samples past the exact
+    # boundary, leaking that boundary cue into the file. Drop everything at/after
+    # the boundary so the next-period cue stays silent by default (it is sounded
+    # only with --end-cue, which extends the file past it). See SPEC/README.
+    if config.end_align is not None and not config.end_cue:
+        boundary = _end_align_boundary_sample(schedule, config)
+        if boundary is not None:
+            clicks = [(s, r) for s, r in clicks if s < boundary]
+
     return clicks
 
 
@@ -460,6 +471,33 @@ def _resolve_metronome_start(schedule: Schedule, config: Config) -> int:
             f"got {config.metronome_start!r}"
         ) from exc
     return int(round(seconds * schedule.sample_rate))
+
+
+def _end_align_boundary_sample(schedule: Schedule, config: Config) -> int | None:
+    """Sample of the metronome grid boundary the file end aligned to, or ``None``.
+
+    Uses the ``config.end_align`` unit (beat/bar/subdivision) and the metronome's
+    own anchor/tempo to find the boundary nearest the file end. Returns ``None``
+    when the metronome or end alignment is inactive.
+    """
+    if config.bpm is None or config.end_align is None:
+        return None
+
+    sr = schedule.sample_rate
+    bpm = config.bpm
+    if config.end_align == "bar":
+        unit = sr * 60.0 * config.time_sig_beats / bpm
+    elif config.end_align == "subdivision":
+        unit = sr * 60.0 / (bpm * config.subdivision)
+    else:  # "beat"
+        unit = sr * 60.0 / bpm
+    if unit <= 0:
+        return None
+
+    start = _resolve_metronome_start(schedule, config)
+    end = schedule.total_samples
+    m = round((end - start) / unit)
+    return start + round(m * unit)
 
 
 def _amp_to_dbfs(amp: float) -> float:

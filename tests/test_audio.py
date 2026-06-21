@@ -308,6 +308,43 @@ def test_metronome_roles_and_cumulative_rounding():
     assert clicks[8][1] == "accent"
 
 
+def test_end_align_silences_next_period_cue_unless_end_cue():
+    """--end-align (no --end-cue) keeps the next-period boundary cue silent even
+    when frame-quantization would otherwise leak it into the file; --end-cue
+    sounds it."""
+    from smpte_leader_gen.config import build_config
+    from smpte_leader_gen.pipeline import build_schedule_from_config
+    from smpte_leader_gen.audio import _end_align_boundary_sample
+
+    base = dict(fps="24", resolution="720p", time_sig="4/4",
+                subdivision=1, lead_seconds=4)
+    # Find a tempo whose frame-quantized end would leak the boundary beat
+    # (boundary onset strictly inside the file).
+    chosen_bpm = None
+    for bpm in range(95, 160):
+        cfg = build_config(output="o.mov", end_align="beat", bpm=bpm, **base)
+        sched = build_schedule_from_config(cfg)
+        if _end_align_boundary_sample(sched, cfg) < sched.total_samples:
+            chosen_bpm = bpm
+            break
+    assert chosen_bpm is not None, "expected a leaking tempo in the scan range"
+
+    cfg = build_config(output="o.mov", end_align="beat", bpm=chosen_bpm, **base)
+    sched = build_schedule_from_config(cfg)
+    boundary = _end_align_boundary_sample(sched, cfg)
+    assert boundary < sched.total_samples  # would have leaked without the fix
+    clicks = metronome_click_samples(sched, cfg)
+    assert all(s < boundary for s, _ in clicks)  # next-period cue is silent
+
+    # The same tempo with --end-cue sounds the boundary cue near the end.
+    cued = build_config(output="o.mov", end_align="beat", end_cue=True,
+                        bpm=chosen_bpm, **base)
+    csched = build_schedule_from_config(cued)
+    cclicks = metronome_click_samples(csched, cued)
+    last = max(s for s, _ in cclicks)
+    assert 0 < (csched.total_samples - last) < 6000  # sounded just before the end
+
+
 def test_metronome_start_t0_uses_ffop_sample():
     config = make_config(fps="24", lead_seconds=8, bpm=100.0, metronome_start="t0")
     schedule = make_schedule(config)
