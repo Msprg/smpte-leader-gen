@@ -127,8 +127,9 @@ def test_documented_ratios(width: int, height: int) -> None:
 @pytest.mark.parametrize(("width", "height"), PRESETS)
 def test_flash_disc_fixed_right_middle(width: int, height: int) -> None:
     layout = compute_layout(width, height)
-    # DECISION (CONTRACT.md §4): flash disc at fixed right-middle (0.85*W, 0.5*H).
-    assert layout.flash_center_x == pytest.approx(0.85 * width)
+    # DECISION (CONTRACT.md §4): flash disc at fixed right-middle (0.90*W, 0.5*H),
+    # nudged right to clear the inner aspect rectangle.
+    assert layout.flash_center_x == pytest.approx(0.90 * width)
     assert layout.flash_center_y == pytest.approx(0.5 * height)
     # twopop flash is larger than the regular flash.
     assert layout.twopop_flash_radius > layout.flash_radius

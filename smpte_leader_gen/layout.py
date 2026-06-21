@@ -89,14 +89,15 @@ def compute_layout(width: int, height: int) -> Layout:
       **top-left** (``0.06 * width``, left-anchored by the renderer), the digital
       timer at the **top-right** (``0.94 * width``, right-anchored), and the optional
       timecode burn-in centred at ``cx``. All use ``round(0.045 * unit)``.
-    * ``flash_radius = 0.05 * unit`` at the FIXED right-middle ``(0.85 * width,
-      0.5 * height)``; ``twopop_flash_radius = 1.6 * flash_radius``.
+    * ``flash_radius = 0.05 * unit`` at the FIXED right-middle ``(0.90 * width,
+      0.5 * height)`` -- clear of the inner aspect rectangle's right edge;
+      ``twopop_flash_radius = 1.6 * flash_radius``.
     * **Registration geometry**: semi-transparent full-frame diagonals (drawn by the
       renderer from the corners) and centre crosshair, plus two opaque rectangles --
       a full-frame **border** marking the exact video extent and a smaller centred
       rectangle (``0.66`` of the frame) sharing the frame's aspect ratio (its corners
       land on the diagonals).
-    * **Audio ruler** along the bottom (``ruler_y = 0.85 * height``, spanning
+    * **Audio ruler** along the bottom (``ruler_y = 0.90 * height``, spanning
       ``0.10..0.90 * width``): a per-frame tick scale **centred on zero** (the beep
       position at the middle) with taller major ticks every five frames labelled in
       **milliseconds** of A/V offset, plus a moving playhead marker that crosses the
@@ -149,7 +150,7 @@ def compute_layout(width: int, height: int) -> Layout:
     number_center_y = cy
 
     flash_radius = 0.05 * unit
-    flash_center_x = 0.85 * width
+    flash_center_x = 0.90 * width
     flash_center_y = 0.5 * height
     twopop_flash_radius = 1.6 * flash_radius
 
@@ -180,8 +181,8 @@ def compute_layout(width: int, height: int) -> Layout:
     aspect_rect_left = (width - aspect_rect_width) / 2.0
     aspect_rect_top = (height - aspect_rect_height) / 2.0
 
-    # Bottom audio ruler.
-    ruler_y = 0.85 * height
+    # Bottom audio ruler (kept below the inner aspect rectangle's bottom edge).
+    ruler_y = 0.90 * height
     ruler_left = 0.10 * width
     ruler_right = 0.90 * width
     ruler_line_width = max(1.5, 0.002 * unit)
