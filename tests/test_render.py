@@ -12,6 +12,7 @@ change, the hash will need to be recomputed.
 from __future__ import annotations
 
 import hashlib
+import math
 
 import numpy as np
 import pytest
@@ -21,6 +22,7 @@ from smpte_leader_gen.render import (
     FONT_BOLD,
     FrameRenderer,
     _format_fps,
+    _rgbf_to_rgb255,
     _SYNCINFO_COLOR255,
 )
 from smpte_leader_gen.timing import Schedule, build_schedule
@@ -318,6 +320,95 @@ def test_sync_info_is_bold_turquoise() -> None:
     assert ys.max() < cfg.height * 0.85         # new bottom ~0.84 h passes; old ~0.87 h fails
     assert ys.max() < r.layout.ruler_y          # never reaches the ruler
     assert abs(xs.min() - r.layout.syncinfo_left_x) < cfg.width * 0.01
+
+
+# --------------------------------------------------------------------------- #
+# Top-center metronome animation
+# --------------------------------------------------------------------------- #
+
+
+def _metro_renderer(fps: str = "24", **over) -> FrameRenderer:
+    """A 1080p renderer with the metronome active (120 bpm, 4/4, subdivision 2).
+
+    At 24 fps / 120 bpm there are 12 frames per beat and 6 per subdivision click.
+    """
+    cfg = build_config(
+        fps=fps, resolution="1080p", output="o.mov", lead_seconds=8,
+        tail_seconds=2.0, bpm=120, time_sig="4/4", subdivision=2, **over,
+    )
+    return FrameRenderer(cfg, _sched_for(cfg))
+
+
+def test_metronome_absent_without_bpm(renderer: FrameRenderer) -> None:
+    """No metronome animation state unless --bpm is set."""
+    assert renderer._metro_active is False  # noqa: SLF001
+
+
+def test_metronome_active_and_deterministic() -> None:
+    """With --bpm the pendulum is active, advances frame to frame, and is stable."""
+    r = _metro_renderer()
+    assert r._metro_active is True  # noqa: SLF001
+    base = r.schedule.countdown_start_frame
+    # Two frames within the same beat differ (the pendulum has swung).
+    assert r.render_frame(base + 2) != r.render_frame(base + 5)
+    # Deterministic.
+    assert r.render_frame(base + 2) == r.render_frame(base + 2)
+
+
+def test_metronome_pendulum_reaches_extreme_on_beat() -> None:
+    """The bob is at a swing extreme on each beat and ~vertical mid-beat."""
+    r = _metro_renderer()  # 12 frames/beat
+    be = r._metro_beats_elapsed  # noqa: SLF001
+    for f in (0, 12, 24):  # beat frames -> integer phase -> |cos| == 1
+        assert abs(math.cos(math.pi * be[f])) == pytest.approx(1.0, abs=1e-9)
+    assert abs(math.cos(math.pi * be[6])) < 0.05  # halfway -> ~vertical
+
+
+def test_metronome_bob_flashes_on_beats_downbeat_accented() -> None:
+    """Beats light the bob; the bar's first beat is accented; subdivisions pulse
+    the pivot; frames between onsets are dark on the bob."""
+    r = _metro_renderer()
+    assert r._metro_bob_level[0] == pytest.approx(1.0)  # noqa: SLF001  downbeat
+    assert bool(r._metro_bob_accent[0]) is True  # noqa: SLF001
+    assert r._metro_bob_level[12] == pytest.approx(1.0)  # noqa: SLF001  beat 1
+    assert bool(r._metro_bob_accent[12]) is False  # noqa: SLF001  not a downbeat
+    assert r._metro_bob_level[5] == 0.0  # noqa: SLF001  between beats
+    # subdivision click at the half-beat (frame 6) pulses the pivot, not the bob.
+    assert r._metro_pivot_level[6] > 0.0  # noqa: SLF001
+    assert r._metro_bob_level[6] == 0.0  # noqa: SLF001
+
+
+def test_metronome_renders_accent_in_top_center_band() -> None:
+    """On a downbeat the bob paints accent-colored pixels in the top-center band
+    (and pre-roll frames show the pendulum too)."""
+    r = _metro_renderer()
+    cfg = r.config
+    accent = np.array(_rgbf_to_rgb255(cfg.accent_color), dtype=np.int16)
+    arr = np.frombuffer(r.render_frame(0), dtype=np.uint8).reshape(
+        cfg.height, cfg.width, 3
+    )
+    band = arr[
+        int(0.10 * cfg.height):int(0.28 * cfg.height),
+        int(0.40 * cfg.width):int(0.60 * cfg.width),
+    ].astype(np.int16)
+    assert (np.abs(band - accent).sum(axis=2) < 40).sum() > 0
+
+
+def test_metronome_shows_during_preroll() -> None:
+    """The pendulum is drawn during pre-roll (the metronome is audible there)."""
+    cfg = build_config(
+        fps="24", resolution="1080p", output="o.mov", lead_seconds=8,
+        tail_seconds=1.0, preroll_seconds=1.0, bpm=120, time_sig="4/4",
+    )
+    r = FrameRenderer(cfg, _sched_for(cfg))
+    assert r.schedule.preroll_frames > 0
+    # A pre-roll frame is not just the static background (pendulum composited in).
+    pre = np.frombuffer(r.render_frame(0), dtype=np.uint8).reshape(
+        cfg.height, cfg.width, 3
+    )
+    band = (slice(int(0.10 * cfg.height), int(0.28 * cfg.height)),
+            slice(int(0.40 * cfg.width), int(0.60 * cfg.width)))
+    assert not np.array_equal(pre[band], r._static[band])  # noqa: SLF001
 
 
 def test_cairo_surface_to_rgb_shape(renderer: FrameRenderer) -> None:

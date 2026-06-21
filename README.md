@@ -25,7 +25,9 @@ wand, big descending numbers, a single-frame reference beep) and adds:
   corner-to-corner diagonals and a centre crosshair,
 - a **single-frame 1 kHz sync beep** every leader-second, preserving the classic
   **"2-pop"** accent,
-- an **optional audio-only metronome** (with subdivisions and an accented downbeat),
+- an **optional metronome** (with subdivisions and an accented downbeat), shown as a
+  **swinging-pendulum animation** at the top-center that ticks in lock-step with the
+  audio clicks,
 - optional **`--end-align`**: extend the tail so the file ends exactly on the next
   metronome beat/bar/subdivision, so butt-joined music continues the click grid.
 
@@ -159,10 +161,17 @@ smpte-leader-gen \
   -o leader_metronome.mov
 ```
 
-The metronome is **audio-only**, off by default, and enabled simply by passing
-`--bpm`. The downbeat (first beat of each bar) is accented; `--subdivision 2`
-adds eighth-note clicks. Click timbres (accent 2000 Hz / beat 1500 Hz /
-subdivision 1200 Hz) are deliberately **distinct from the 1 kHz sync beep**.
+The metronome is off by default and enabled simply by passing `--bpm`. The
+downbeat (first beat of each bar) is accented; `--subdivision 2` adds eighth-note
+clicks. Click timbres (accent 2000 Hz / beat 1500 Hz / subdivision 1200 Hz) are
+deliberately **distinct from the 1 kHz sync beep**.
+
+Whenever `--bpm` is set, a **swinging-pendulum animation** appears at the
+top-center (an inverted "Maelzel" pendulum). It swings one beat per half-swing,
+reaching an extreme exactly on each beat; the bob lights up on every beat
+(brighter, with a ring, on the bar's downbeat) and the pivot pulses on every
+click, so subdivisions read as a finer tick. The motion is derived from the same
+sample grid as the audio, so the visual stays locked to the clicks.
 
 ### SMPTE count style (fixed 8 → 2)
 
@@ -217,7 +226,7 @@ hyphens or underscores) is read first; **explicit CLI flags override file values
 | `--no-persecond-beep` | flag | off | Only the 2-pop fires (classic). |
 | `--no-twopop` | flag | off | Disable the 2-pop accent. |
 
-### Metronome (audio-only; enabled by `--bpm`)
+### Metronome (audio clicks + top-center pendulum; enabled by `--bpm`)
 
 | Flag | Type | Default | Notes |
 |---|---|---|---|

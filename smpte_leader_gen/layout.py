@@ -79,6 +79,13 @@ class Layout:
     syncinfo_left_x: float
     syncinfo_top_y: float
     syncinfo_line_h: float
+    # top-center metronome animation (inverted pendulum; only drawn with --bpm)
+    metro_center_x: float
+    metro_pivot_y: float
+    metro_arm_len: float
+    metro_bob_radius: float
+    metro_arm_width: float
+    metro_pivot_radius: float
 
 
 def compute_layout(width: int, height: int) -> Layout:
@@ -113,6 +120,10 @@ def compute_layout(width: int, height: int) -> Layout:
       frame rates) -- plus a moving playhead marker that crosses the centre exactly
       on the beep: a linear, calibrated reference for spotting and measuring
       A/V-sync offset against the audible beep.
+    * **Metronome animation** (only with ``--bpm``): an inverted-pendulum widget
+      centred at the top (``metro_pivot_y = 0.25 * height``, arm ``0.108 * height``)
+      that swings one beat per half-swing in the band between the top readout and
+      the clock; the renderer animates and flashes it in lock-step with the clicks.
 
     Args:
         width: Output frame width in pixels (must be positive).
@@ -217,6 +228,18 @@ def compute_layout(width: int, height: int) -> Layout:
     syncinfo_top_y = 0.780 * height
     syncinfo_line_h = 0.024 * height
 
+    # Top-center metronome animation: an inverted pendulum (pivot low, bob high,
+    # like a mechanical Maelzel metronome) swinging in the free band between the
+    # top readout row (~0.085 h) and the clock's top edge (~0.28 h). Only drawn
+    # when the metronome is active (--bpm). The bob is highest (at ``metro_pivot_y
+    # - metro_arm_len`` ~= 0.142 h) when vertical, staying clear of the readout.
+    metro_center_x = cx
+    metro_pivot_y = 0.250 * height
+    metro_arm_len = 0.108 * height
+    metro_bob_radius = 0.020 * unit
+    metro_arm_width = max(2.0, 0.006 * unit)
+    metro_pivot_radius = 0.012 * unit
+
     return Layout(
         width=width,
         height=height,
@@ -270,4 +293,10 @@ def compute_layout(width: int, height: int) -> Layout:
         syncinfo_left_x=syncinfo_left_x,
         syncinfo_top_y=syncinfo_top_y,
         syncinfo_line_h=syncinfo_line_h,
+        metro_center_x=metro_center_x,
+        metro_pivot_y=metro_pivot_y,
+        metro_arm_len=metro_arm_len,
+        metro_bob_radius=metro_bob_radius,
+        metro_arm_width=metro_arm_width,
+        metro_pivot_radius=metro_pivot_radius,
     )

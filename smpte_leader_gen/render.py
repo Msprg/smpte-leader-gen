@@ -24,10 +24,10 @@ import cairo
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-from .audio import _resolve_metronome_start
+from .audio import _resolve_metronome_start, metronome_click_samples
 from .config import Config
 from .layout import Layout, compute_layout
-from .timing import Schedule
+from .timing import Schedule, frame_start_sample
 
 __all__ = ["FrameRenderer", "FONT_REGULAR", "FONT_BOLD"]
 
@@ -42,6 +42,10 @@ _FONT_DIR = Path(__file__).parent / "fonts"
 FONT_REGULAR = str(_FONT_DIR / "DejaVuSansMono.ttf")
 #: Absolute path to the bundled bold monospace font (big countdown number).
 FONT_BOLD = str(_FONT_DIR / "DejaVuSansMono-Bold.ttf")
+
+#: Peak swing angle of the top-center metronome pendulum, measured from vertical
+#: (radians). The bob reaches +-this angle exactly on each beat.
+_METRO_SWING_RAD = math.radians(32.0)
 
 #: Fixed turquoise fill for the lower-left metronome / nudge readout. Drawn bold in
 #: this colour so the glyphs stay legible where they overlap the (near-white,
@@ -154,6 +158,11 @@ class FrameRenderer:
         # Bold so it stays readable where it overlaps the registration rectangle.
         self._font_syncinfo = _load_font(FONT_BOLD, self.layout.syncinfo_font_px)
         self._sync_info_lines = self._compute_sync_info()
+
+        # Top-center metronome pendulum animation (only when --bpm is set).
+        self._metro_active = config.bpm is not None
+        if self._metro_active:
+            self._init_metronome()
 
         # Build and cache the static RGB background.
         self._static: np.ndarray = self._build_static()
@@ -439,6 +448,155 @@ class FrameRenderer:
         np.copyto(arr, np.asarray(image))
 
     # ------------------------------------------------------------------ #
+    # Metronome animation (top-center inverted pendulum)
+    # ------------------------------------------------------------------ #
+
+    def _init_metronome(self) -> None:
+        """Precompute the per-frame pendulum phase and flash levels (--bpm only).
+
+        The pendulum swings one beat per half-period, so the bob reaches an extreme
+        (and momentarily stops) exactly on each beat -- true pendulum motion that
+        reads as the metronome's tick. The bob flashes on beats (brighter, with a
+        ring, on the bar's downbeat) and the pivot pulses on every click, so the
+        subdivision grid reads as a finer tick. Everything is derived from the exact
+        sample grid (the same onsets the audio uses), so the visual stays locked to
+        the clicks.
+        """
+        sched = self.schedule
+        cfg = self.config
+        sr = sched.sample_rate
+        fps = sched.fps
+        n_frames = sched.total_frames
+
+        self._metro_start_sample = _resolve_metronome_start(sched, cfg)
+        self._metro_beat_samples = sr * 60.0 / cfg.bpm  # samples per beat
+
+        # Drift-free frame-start samples (also the onset->frame lookup table).
+        frame_starts = np.array(
+            [frame_start_sample(i, sr, fps) for i in range(n_frames + 1)],
+            dtype=np.int64,
+        )
+
+        # Pendulum phase in beats at each frame start, clamped to >= 0 (the bob
+        # holds at its start extreme until the grid begins).
+        beats = (
+            frame_starts[:n_frames] - self._metro_start_sample
+        ) / self._metro_beat_samples
+        self._metro_beats_elapsed = np.maximum(beats, 0.0)
+
+        # Per-frame flash envelopes: bob (beats/downbeats) and pivot (every click).
+        self._metro_bob_level = np.zeros(n_frames, dtype=np.float64)
+        self._metro_bob_accent = np.zeros(n_frames, dtype=bool)
+        self._metro_pivot_level = np.zeros(n_frames, dtype=np.float64)
+
+        bob_decay = max(2, round(0.09 * float(fps)))    # ~90 ms bob flash
+        pivot_decay = max(2, round(0.05 * float(fps)))  # ~50 ms pivot tick
+
+        for sample, role in metronome_click_samples(sched, cfg):
+            f0 = int(np.searchsorted(frame_starts, sample, side="right")) - 1
+            if f0 < 0:
+                continue
+            self._fill_flash(self._metro_pivot_level, None, f0, pivot_decay, False)
+            if role in ("beat", "accent"):
+                self._fill_flash(
+                    self._metro_bob_level,
+                    self._metro_bob_accent,
+                    f0,
+                    bob_decay,
+                    role == "accent",
+                )
+
+    @staticmethod
+    def _fill_flash(
+        level: np.ndarray,
+        accent: np.ndarray | None,
+        f0: int,
+        decay: int,
+        is_accent: bool,
+    ) -> None:
+        """Write a linear flash decay starting at frame ``f0`` into ``level``.
+
+        Frame ``f0`` gets level ``1.0`` and the following ``decay-1`` frames ramp
+        down to ``0``. Where a new onset's level meets or exceeds the existing one,
+        it wins (and stamps ``accent`` if provided), so the most recent click drives
+        the look.
+        """
+        n = level.shape[0]
+        for d in range(decay):
+            f = f0 + d
+            if f >= n:
+                break
+            lvl = 1.0 - d / decay
+            if lvl >= level[f]:
+                level[f] = lvl
+                if accent is not None:
+                    accent[f] = is_accent
+
+    def _draw_metronome(self, ctx: cairo.Context, i: int) -> None:
+        """Draw the top-center pendulum for frame ``i`` (no-op when --bpm is off).
+
+        The arm swings to ``angle = swing * cos(pi * beats_elapsed)`` from vertical;
+        the bob lights from a resting weight toward the accent color on each beat
+        (with a ring on the downbeat); the pivot disc pulses on every click.
+        """
+        if not self._metro_active or i >= self.schedule.total_frames:
+            return
+        lay = self.layout
+        px, py, arm = lay.metro_center_x, lay.metro_pivot_y, lay.metro_arm_len
+
+        angle = _METRO_SWING_RAD * math.cos(math.pi * self._metro_beats_elapsed[i])
+        bx = px + arm * math.sin(angle)
+        by = py - arm * math.cos(angle)
+
+        # Faint swing-range arc (a graduated scale, like a real metronome's).
+        up = -math.pi / 2.0
+        ctx.set_source_rgba(*self._fg, lay.geometry_line_alpha)
+        ctx.set_line_width(lay.crosshair_line_width)
+        ctx.arc(px, py, arm, up - _METRO_SWING_RAD, up + _METRO_SWING_RAD)
+        ctx.stroke()
+
+        # Arm.
+        ctx.set_source_rgb(*self._fg)
+        ctx.set_line_width(lay.metro_arm_width)
+        ctx.set_line_cap(cairo.LINE_CAP_ROUND)
+        ctx.move_to(px, py)
+        ctx.line_to(bx, by)
+        ctx.stroke()
+
+        # Bob: a resting weight that lights toward the accent on the beat; larger,
+        # with a ring, on the bar's downbeat.
+        level = float(self._metro_bob_level[i])
+        is_accent = bool(self._metro_bob_accent[i])
+        weight = _blend(self._bg, self._fg, 0.6)
+        col = _blend(weight, self._accent, level)
+        grow = (0.45 if is_accent else 0.18) * level
+        r = lay.metro_bob_radius * (1.0 + grow)
+        ctx.set_source_rgb(*col)
+        ctx.arc(bx, by, r, 0.0, 2.0 * math.pi)
+        ctx.fill()
+        if is_accent and level > 0.0:
+            ctx.set_source_rgb(*self._accent)
+            ctx.set_line_width(lay.metro_arm_width)
+            ctx.arc(bx, by, r + lay.metro_bob_radius * 0.5, 0.0, 2.0 * math.pi)
+            ctx.stroke()
+
+        # Pivot: small disc pulsing on every click (so subdivisions read as ticks).
+        plevel = float(self._metro_pivot_level[i])
+        pcol = _blend(self._fg, self._accent, plevel)
+        pr = lay.metro_pivot_radius * (1.0 + 0.5 * plevel)
+        ctx.set_source_rgb(*pcol)
+        ctx.arc(px, py, pr, 0.0, 2.0 * math.pi)
+        ctx.fill()
+
+    def _draw_metronome_layer(self, arr: np.ndarray, i: int) -> np.ndarray:
+        """Composite only the metronome pendulum over ``arr`` (used in pre-roll)."""
+        surface = self._rgb_to_cairo_surface(arr)
+        ctx = cairo.Context(surface)
+        self._draw_metronome(ctx, i)
+        surface.flush()
+        return self._cairo_surface_to_rgb(surface)
+
+    # ------------------------------------------------------------------ #
     # Per-frame rendering
     # ------------------------------------------------------------------ #
 
@@ -485,9 +643,14 @@ class FrameRenderer:
         arr = self._static.copy()
 
         # Draw dynamic vector elements (wipe, wand, flash) onto a cairo surface
-        # initialized from the static layer, then read back to ``arr``.
+        # initialized from the static layer, then read back to ``arr``. The
+        # metronome pendulum is drawn inside _draw_dynamic_vectors for countdown
+        # frames; pre-roll frames get the pendulum alone (the metronome is audible
+        # there too) but none of the countdown vectors.
         if in_countdown:
             arr = self._draw_dynamic_vectors(arr, i)
+        elif self._metro_active:
+            arr = self._draw_metronome_layer(arr, i)
 
         # Text overlays (Pillow) drawn directly on the RGB array.
         self._draw_text(arr, i, in_countdown)
@@ -548,6 +711,10 @@ class FrameRenderer:
 
         # Audio-ruler playhead: marker on the current frame's tick.
         self._draw_ruler_marker(ctx, i)
+
+        # Top-center metronome pendulum (locked to the click grid).
+        if self._metro_active:
+            self._draw_metronome(ctx, i)
 
         surface.flush()
         return self._cairo_surface_to_rgb(surface)

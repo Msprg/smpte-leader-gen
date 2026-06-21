@@ -99,6 +99,12 @@ def test_all_sizes_positive(width: int, height: int) -> None:
         layout.syncinfo_left_x,
         layout.syncinfo_top_y,
         layout.syncinfo_line_h,
+        layout.metro_center_x,
+        layout.metro_pivot_y,
+        layout.metro_arm_len,
+        layout.metro_bob_radius,
+        layout.metro_arm_width,
+        layout.metro_pivot_radius,
     ]
     for value in positive_fields:
         assert value > 0
@@ -196,6 +202,19 @@ def test_ruler_geometry(width: int, height: int) -> None:
     assert layout.ruler_incr_label_y > layout.ruler_label_y
     assert layout.ruler_incr_label_font_px < layout.ruler_label_font_px
     assert layout.ruler_incr_label_y < height  # stays on-frame
+
+
+@pytest.mark.parametrize(("width", "height"), PRESETS)
+def test_metronome_widget_in_top_band(width: int, height: int) -> None:
+    layout = compute_layout(width, height)
+    # Centred horizontally.
+    assert layout.metro_center_x == pytest.approx(width / 2.0)
+    # The bob (highest when vertical) stays below the top readout row.
+    bob_top = layout.metro_pivot_y - layout.metro_arm_len - layout.metro_bob_radius
+    assert bob_top > 0.11 * height
+    # The pivot stays above the clock's top edge (no overlap with the clock).
+    clock_top = layout.cy - layout.clock_radius
+    assert layout.metro_pivot_y + layout.metro_pivot_radius < clock_top
 
 
 def test_layout_is_frozen() -> None:
