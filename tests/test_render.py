@@ -13,16 +13,22 @@ from __future__ import annotations
 
 import hashlib
 
+import numpy as np
 import pytest
 
 from smpte_leader_gen.config import build_config, Config
-from smpte_leader_gen.render import FrameRenderer, _format_fps
+from smpte_leader_gen.render import (
+    FONT_BOLD,
+    FrameRenderer,
+    _format_fps,
+    _SYNCINFO_COLOR255,
+)
 from smpte_leader_gen.timing import Schedule, build_schedule
 
 # sha256 of the packed RGB24 bytes of the 2-pop ("2") frame, 1920x1080 @ 24 fps,
 # lead=8, tail=2, preroll=0, count_style=full. Baked from this environment.
 GOLDEN_2POP_SHA256 = (
-    "73f3d32f6df84b1d34c1302f74fab06f325167d9149cbdf2cefa2898380f61d7"
+    "b5737dd2a6dd00a5ece586c1720b598b3f824b2f31c070bfe3fc7a4f8efea525"
 )
 
 
@@ -227,6 +233,50 @@ def test_sync_info_references_bar_not_end_align_unit() -> None:
     # 4/4 @ 120 bpm @ 24 fps: bar = 4 beats = 2.0 s = 48 frames = 96000 samples.
     assert "48.00 f" in lines[1]
     assert "96000 smp" in lines[1]
+
+
+def test_ruler_labels_flank_zero(renderer: FrameRenderer) -> None:
+    """The two ticks flanking zero (+-1) are labelled so the per-frame increment
+    is legible; the next ticks out (+-2) remain bare (checked at 24 fps)."""
+    lay = renderer.layout
+    static = renderer._static.astype(np.int16)  # noqa: SLF001
+    bg = np.array(
+        [round(c * 255) for c in renderer.config.bg_color], dtype=np.int16
+    )
+    y0 = int(lay.ruler_label_y - lay.ruler_label_font_px * 0.7)
+    y1 = int(lay.ruler_label_y + lay.ruler_label_font_px * 0.7)
+
+    def label_pixels(offset: int) -> int:
+        x = renderer._ruler_tick_x(offset)  # noqa: SLF001
+        x0 = int(x - lay.ruler_label_font_px * 1.2)
+        x1 = int(x + lay.ruler_label_font_px * 1.2)
+        region = static[y0:y1, x0:x1]
+        return int((np.abs(region - bg).sum(axis=2) > 40).sum())
+
+    assert label_pixels(1) > 0
+    assert label_pixels(-1) > 0
+    assert label_pixels(2) == 0
+    assert label_pixels(-2) == 0
+
+
+def test_sync_info_is_bold_turquoise() -> None:
+    """The metronome readout is drawn with the bold font in turquoise, hugging the
+    lower-left border and sitting above the ruler."""
+    cfg = build_config(
+        fps="24", resolution="1080p", output="o.mov", lead_seconds=4,
+        tail_seconds=2.0, bpm=120, time_sig="4/4",
+    )
+    r = FrameRenderer(cfg, _sched_for(cfg))
+    assert r._sync_info_lines is not None  # noqa: SLF001
+    assert r._font_syncinfo.path == FONT_BOLD  # noqa: SLF001
+
+    target = np.array(_SYNCINFO_COLOR255, dtype=np.int16)
+    band = r._static.astype(np.int16)  # noqa: SLF001
+    ys, xs = np.where(np.abs(band - target).sum(axis=2) < 60)
+    assert len(ys) > 0  # turquoise text present
+    # Hugs the left border and stays clear of the ruler near the bottom.
+    assert xs.min() < cfg.width * 0.05
+    assert ys.max() < r.layout.ruler_y
 
 
 def test_cairo_surface_to_rgb_shape(renderer: FrameRenderer) -> None:

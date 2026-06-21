@@ -105,9 +105,10 @@ def compute_layout(width: int, height: int) -> Layout:
     * **Audio ruler** along the bottom (``ruler_y = 0.90 * height``, spanning
       ``0.10..0.90 * width``): a per-frame tick scale **centred on zero** (the beep
       position at the middle) with taller major ticks every five frames labelled in
-      **milliseconds** of A/V offset, plus a moving playhead marker that crosses the
-      centre exactly on the beep -- a linear, calibrated reference for spotting and
-      measuring A/V-sync offset against the audible beep.
+      **milliseconds** of A/V offset -- and the two ticks flanking zero (``+-1``)
+      always labelled so the per-frame increment is legible -- plus a moving playhead
+      marker that crosses the centre exactly on the beep: a linear, calibrated
+      reference for spotting and measuring A/V-sync offset against the audible beep.
 
     Args:
         width: Output frame width in pixels (must be positive).
@@ -198,11 +199,12 @@ def compute_layout(width: int, height: int) -> Layout:
     ruler_marker_h = 0.022 * height
     ruler_marker_half_w = 0.010 * unit
 
-    # End-alignment / nudge info: a small multi-line block in the lower-left band
-    # between the inner aspect rectangle's bottom edge and the audio ruler.
+    # End-alignment / nudge info: a small multi-line block tucked into the
+    # lower-left, hugging the left frame border and sitting well above the audio
+    # ruler so it does not feel crowded against the timeline.
     syncinfo_font_px = round(0.020 * unit)
-    syncinfo_left_x = 0.045 * width
-    syncinfo_top_y = 0.812 * height
+    syncinfo_left_x = 0.025 * width
+    syncinfo_top_y = 0.780 * height
     syncinfo_line_h = 0.024 * height
 
     return Layout(

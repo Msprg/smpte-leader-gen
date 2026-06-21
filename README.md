@@ -16,8 +16,10 @@ wand, big descending numbers, a single-frame reference beep) and adds:
 - a **flashing circle** that flashes on the exact frame an audio cue fires,
 - a **bottom "audio ruler"**: a per-frame tick scale **centred on zero** (the beep
   position in the middle) with major ticks labelled in **milliseconds** of A/V
-  offset, and a moving playhead marker that **crosses the centre on every beep** —
-  a calibrated reference for discovering and quantifying A/V-sync offset,
+  offset (and the two ticks flanking zero always labelled, so the per-frame
+  increment is obvious), plus a moving playhead marker that **crosses the centre on
+  every beep** — a calibrated reference for discovering and quantifying A/V-sync
+  offset,
 - **registration geometry**: a **full-frame border** marking the exact video extent,
   a smaller centred rectangle sharing the video's aspect ratio, plus semi-transparent
   corner-to-corner diagonals and a centre crosshair,
@@ -247,8 +249,9 @@ smpte-leader-gen --fps 24 --bpm 120 --time-sig 4/4 \
   --tail-seconds 1.0 --end-align bar -o leader_endbar.mov
 ```
 
-Whenever the metronome is active (`--bpm`), a small **readout appears in the
-lower-left** with the metrics for aligning the seam to the **bar downbeat**:
+Whenever the metronome is active (`--bpm`), a small **bold turquoise readout
+appears in the lower-left** (hugging the left frame border, above the audio ruler)
+with the metrics for aligning the seam to the **bar downbeat**:
 
 ```
 METRONOME 128 BPM  2/4  23.976 fps

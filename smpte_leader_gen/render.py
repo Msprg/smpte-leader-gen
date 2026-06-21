@@ -43,6 +43,11 @@ FONT_REGULAR = str(_FONT_DIR / "DejaVuSansMono.ttf")
 #: Absolute path to the bundled bold monospace font (big countdown number).
 FONT_BOLD = str(_FONT_DIR / "DejaVuSansMono-Bold.ttf")
 
+#: Fixed turquoise fill for the lower-left metronome / nudge readout. Drawn bold in
+#: this colour so the text stays legible where it crosses the white registration
+#: rectangle, independent of the configurable fg/accent colours.
+_SYNCINFO_COLOR255: tuple[int, int, int] = (64, 224, 208)
+
 
 @lru_cache(maxsize=None)
 def _load_font(path: str, size: int) -> ImageFont.FreeTypeFont:
@@ -141,7 +146,8 @@ class FrameRenderer:
         self._frame_ms = 1000.0 * schedule.fps.denominator / schedule.fps.numerator
 
         # Lower-left end-alignment / nudge info block (None when --end-align off).
-        self._font_syncinfo = _load_font(FONT_REGULAR, self.layout.syncinfo_font_px)
+        # Bold so it stays readable where it overlaps the registration rectangle.
+        self._font_syncinfo = _load_font(FONT_BOLD, self.layout.syncinfo_font_px)
         self._sync_info_lines = self._compute_sync_info()
 
         # Build and cache the static RGB background.
@@ -305,13 +311,17 @@ class FrameRenderer:
         """Draw millisecond labels under the ruler's major ticks (Pillow).
 
         Each major tick is labelled with its A/V offset in milliseconds relative to
-        the centred zero (the beep). The centre reads ``0`` in the accent color.
+        the centred zero (the beep). The two ticks flanking zero (offsets ``+-1``)
+        are always labelled too, so the per-frame increment (ms per frame) is
+        immediately readable next to the centre. The centre reads ``0`` in the
+        accent color.
         """
         lay = self.layout
         image = Image.fromarray(arr, mode="RGB")
         draw = ImageDraw.Draw(image)
         for offset in self._ruler_tick_range():
-            if (offset % self._ruler_major) != 0:
+            # Major ticks (every fifth frame) plus the immediate neighbours of zero.
+            if (offset % self._ruler_major) != 0 and abs(offset) != 1:
                 continue
             x = self._ruler_tick_x(offset)
             if offset == 0:
@@ -401,7 +411,7 @@ class FrameRenderer:
                 (lay.syncinfo_left_x, y),
                 text,
                 font=self._font_syncinfo,
-                fill=self._fg255,
+                fill=_SYNCINFO_COLOR255,
                 anchor="lm",
             )
         np.copyto(arr, np.asarray(image))
