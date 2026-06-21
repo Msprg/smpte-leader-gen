@@ -44,8 +44,10 @@ FONT_REGULAR = str(_FONT_DIR / "DejaVuSansMono.ttf")
 FONT_BOLD = str(_FONT_DIR / "DejaVuSansMono-Bold.ttf")
 
 #: Fixed turquoise fill for the lower-left metronome / nudge readout. Drawn bold in
-#: this colour so the text stays legible where it crosses the white registration
-#: rectangle, independent of the configurable fg/accent colours.
+#: this colour so the glyphs stay legible where they overlap the (near-white,
+#: #E0E0E0) registration rectangle and diagonals -- the bold weight reads across the
+#: thin stroke while the body of the text sits on the dark background. Independent of
+#: the configurable fg/accent colours.
 _SYNCINFO_COLOR255: tuple[int, int, int] = (64, 224, 208)
 
 
@@ -134,6 +136,9 @@ class FrameRenderer:
         self._font_timer = _load_font(FONT_REGULAR, self.layout.timer_font_px)
         self._font_burnin = _load_font(FONT_REGULAR, self.layout.burnin_font_px)
         self._font_ruler = _load_font(FONT_REGULAR, self.layout.ruler_label_font_px)
+        self._font_ruler_incr = _load_font(
+            FONT_REGULAR, self.layout.ruler_incr_label_font_px
+        )
 
         # Frame-counter denominator: the actual fps as a decimal, so rates that
         # differ only by a fraction (e.g. 23.976 vs 24) are visually distinct.
@@ -145,7 +150,7 @@ class FrameRenderer:
         # Duration of one frame in milliseconds, for the ruler's ms scale.
         self._frame_ms = 1000.0 * schedule.fps.denominator / schedule.fps.numerator
 
-        # Lower-left end-alignment / nudge info block (None when --end-align off).
+        # Lower-left metronome / nudge readout (None unless --bpm is set).
         # Bold so it stays readable where it overlaps the registration rectangle.
         self._font_syncinfo = _load_font(FONT_BOLD, self.layout.syncinfo_font_px)
         self._sync_info_lines = self._compute_sync_info()
@@ -241,7 +246,7 @@ class FrameRenderer:
         # Ruler frame-index labels (Pillow text on the static array, once).
         self._draw_ruler_labels(arr)
 
-        # Lower-left end-alignment / nudge info (static; only with --end-align).
+        # Lower-left metronome / nudge readout (static; only when --bpm is set).
         if self._sync_info_lines:
             self._draw_sync_info(arr)
         return arr
@@ -308,20 +313,22 @@ class FrameRenderer:
             ctx.stroke()
 
     def _draw_ruler_labels(self, arr: np.ndarray) -> None:
-        """Draw millisecond labels under the ruler's major ticks (Pillow).
+        """Draw the ruler's millisecond labels (Pillow), in two rows.
 
-        Each major tick is labelled with its A/V offset in milliseconds relative to
-        the centred zero (the beep). The two ticks flanking zero (offsets ``+-1``)
-        are always labelled too, so the per-frame increment (ms per frame) is
-        immediately readable next to the centre. The centre reads ``0`` in the
-        accent color.
+        The main row labels the centred zero and every major (5-frame) tick with its
+        A/V offset in milliseconds; the centre reads ``0`` in the accent color. The
+        two ticks flanking zero (offsets ``+-1``) are labelled on a dedicated,
+        slightly smaller row just below, so the per-frame increment (ms per frame) is
+        always readable without crowding the centre ``0`` at high frame rates (where
+        the per-frame ticks pack too tightly to label in line).
         """
         lay = self.layout
         image = Image.fromarray(arr, mode="RGB")
         draw = ImageDraw.Draw(image)
+
+        # Main row: the centred zero and every major (5-frame) tick.
         for offset in self._ruler_tick_range():
-            # Major ticks (every fifth frame) plus the immediate neighbours of zero.
-            if (offset % self._ruler_major) != 0 and abs(offset) != 1:
+            if (offset % self._ruler_major) != 0:
                 continue
             x = self._ruler_tick_x(offset)
             if offset == 0:
@@ -335,6 +342,21 @@ class FrameRenderer:
                 text,
                 font=self._font_ruler,
                 fill=color,
+                anchor="mm",
+            )
+
+        # Increment row: the +-1 ticks on their own lower row (if on the ruler).
+        tick_range = self._ruler_tick_range()
+        for offset in (-1, 1):
+            if offset not in tick_range:
+                continue
+            x = self._ruler_tick_x(offset)
+            text = f"{round(offset * self._frame_ms):+d}"
+            draw.text(
+                (x, lay.ruler_incr_label_y),
+                text,
+                font=self._font_ruler_incr,
+                fill=self._fg255,
                 anchor="mm",
             )
         np.copyto(arr, np.asarray(image))

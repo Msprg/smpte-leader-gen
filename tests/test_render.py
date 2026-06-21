@@ -28,7 +28,7 @@ from smpte_leader_gen.timing import Schedule, build_schedule
 # sha256 of the packed RGB24 bytes of the 2-pop ("2") frame, 1920x1080 @ 24 fps,
 # lead=8, tail=2, preroll=0, count_style=full. Baked from this environment.
 GOLDEN_2POP_SHA256 = (
-    "b5737dd2a6dd00a5ece586c1720b598b3f824b2f31c070bfe3fc7a4f8efea525"
+    "abafc2b4b138e74dcc7fe33445e80793af6e4649814c210ab45a32b9c2471df0"
 )
 
 
@@ -235,28 +235,64 @@ def test_sync_info_references_bar_not_end_align_unit() -> None:
     assert "96000 smp" in lines[1]
 
 
-def test_ruler_labels_flank_zero(renderer: FrameRenderer) -> None:
-    """The two ticks flanking zero (+-1) are labelled so the per-frame increment
-    is legible; the next ticks out (+-2) remain bare (checked at 24 fps)."""
-    lay = renderer.layout
-    static = renderer._static.astype(np.int16)  # noqa: SLF001
-    bg = np.array(
-        [round(c * 255) for c in renderer.config.bg_color], dtype=np.int16
-    )
-    y0 = int(lay.ruler_label_y - lay.ruler_label_font_px * 0.7)
-    y1 = int(lay.ruler_label_y + lay.ruler_label_font_px * 0.7)
+def _label_pixels_at(r: FrameRenderer, offset: int, *, row: str) -> int:
+    """Count non-background pixels in the label box for ``offset`` on ``row``.
 
-    def label_pixels(offset: int) -> int:
-        x = renderer._ruler_tick_x(offset)  # noqa: SLF001
-        x0 = int(x - lay.ruler_label_font_px * 1.2)
-        x1 = int(x + lay.ruler_label_font_px * 1.2)
-        region = static[y0:y1, x0:x1]
-        return int((np.abs(region - bg).sum(axis=2) > 40).sum())
+    ``row`` is ``"major"`` (the main label row) or ``"incr"`` (the +-1 row). The
+    box is centred on the tick's x and the row's baseline.
+    """
+    lay = r.layout
+    static = r._static.astype(np.int16)  # noqa: SLF001
+    bg = np.array([round(c * 255) for c in r.config.bg_color], dtype=np.int16)
+    if row == "incr":
+        cy, fpx = lay.ruler_incr_label_y, lay.ruler_incr_label_font_px
+    else:
+        cy, fpx = lay.ruler_label_y, lay.ruler_label_font_px
+    y0, y1 = int(cy - fpx * 0.7), int(cy + fpx * 0.7)
+    x = r._ruler_tick_x(offset)  # noqa: SLF001
+    x0, x1 = int(x - fpx * 1.2), int(x + fpx * 1.2)
+    region = static[y0:y1, x0:x1]
+    return int((np.abs(region - bg).sum(axis=2) > 40).sum())
 
-    assert label_pixels(1) > 0
-    assert label_pixels(-1) > 0
-    assert label_pixels(2) == 0
-    assert label_pixels(-2) == 0
+
+def test_ruler_pm1_labels_on_dedicated_row(renderer: FrameRenderer) -> None:
+    """The +-1 increment labels render on their own (lower) row, not the main row;
+    the main row still carries the centre 0 and the +-5 majors (24 fps fixture)."""
+    # +-1 labelled on the increment row, absent from the main label row.
+    assert _label_pixels_at(renderer, 1, row="incr") > 0
+    assert _label_pixels_at(renderer, -1, row="incr") > 0
+    assert _label_pixels_at(renderer, 1, row="major") == 0
+    assert _label_pixels_at(renderer, -1, row="major") == 0
+    # Main row keeps the centre 0 and the major ticks; +-2 stays bare everywhere.
+    assert _label_pixels_at(renderer, 0, row="major") > 0
+    assert _label_pixels_at(renderer, 5, row="major") > 0
+    assert _label_pixels_at(renderer, 2, row="incr") == 0
+    assert _label_pixels_at(renderer, 2, row="major") == 0
+
+
+def test_ruler_centre_zero_stays_legible_at_high_fps() -> None:
+    """Moving the +-1 labels to their own row keeps the centre 0 uncrowded even at
+    60 fps (dense per-frame ticks). The 0's main-row label box renders identically
+    at 24 and 60 fps -- proof that no +-1 ink bleeds into it -- while the +-1
+    increment labels still render on the dedicated lower row.
+
+    (At 60 fps the +-1 ticks sit ~26 px from centre, so a box around them overlaps
+    the 0 itself; comparing the 0-box across fps is the artifact-free check that the
+    same-row crowding regression is gone.)
+    """
+    def make(fps: str) -> FrameRenderer:
+        cfg = build_config(fps=fps, resolution="1080p", output="o.mov",
+                           lead_seconds=4, tail_seconds=1.0, bpm=120)
+        return FrameRenderer(cfg, _sched_for(cfg))
+
+    r24, r60 = make("24"), make("60")
+    zero24 = _label_pixels_at(r24, 0, row="major")
+    zero60 = _label_pixels_at(r60, 0, row="major")
+    assert zero60 > 0
+    assert zero60 == zero24  # the 0 box is uncontaminated by the +-1 labels
+    # The per-frame increment is still shown, on the dedicated lower row.
+    assert _label_pixels_at(r60, 1, row="incr") > 0
+    assert _label_pixels_at(r60, -1, row="incr") > 0
 
 
 def test_sync_info_is_bold_turquoise() -> None:
@@ -274,9 +310,14 @@ def test_sync_info_is_bold_turquoise() -> None:
     band = r._static.astype(np.int16)  # noqa: SLF001
     ys, xs = np.where(np.abs(band - target).sum(axis=2) < 60)
     assert len(ys) > 0  # turquoise text present
-    # Hugs the left border and stays clear of the ruler near the bottom.
-    assert xs.min() < cfg.width * 0.05
-    assert ys.max() < r.layout.ruler_y
+    # Hugs the left border at the raised position: ink starts near the new
+    # syncinfo_left_x (0.025 w), tighter than the old 0.045 w, and the block sits
+    # higher than the old 0.812 h bottom. Bounds chosen to FAIL if either the x or
+    # y move were reverted, while staying clear of the ruler.
+    assert xs.min() < cfg.width * 0.04          # new ~0.026 w passes; old 0.045 w fails
+    assert ys.max() < cfg.height * 0.85         # new bottom ~0.84 h passes; old ~0.87 h fails
+    assert ys.max() < r.layout.ruler_y          # never reaches the ruler
+    assert abs(xs.min() - r.layout.syncinfo_left_x) < cfg.width * 0.01
 
 
 def test_cairo_surface_to_rgb_shape(renderer: FrameRenderer) -> None:

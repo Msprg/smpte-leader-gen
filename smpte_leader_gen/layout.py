@@ -70,6 +70,8 @@ class Layout:
     ruler_tick_major_h: float
     ruler_label_font_px: int
     ruler_label_y: float
+    ruler_incr_label_font_px: int
+    ruler_incr_label_y: float
     ruler_marker_h: float
     ruler_marker_half_w: float
     # bottom-left end-alignment / nudge info block (multi-line, left-aligned)
@@ -106,9 +108,11 @@ def compute_layout(width: int, height: int) -> Layout:
       ``0.10..0.90 * width``): a per-frame tick scale **centred on zero** (the beep
       position at the middle) with taller major ticks every five frames labelled in
       **milliseconds** of A/V offset -- and the two ticks flanking zero (``+-1``)
-      always labelled so the per-frame increment is legible -- plus a moving playhead
-      marker that crosses the centre exactly on the beep: a linear, calibrated
-      reference for spotting and measuring A/V-sync offset against the audible beep.
+      always labelled on a dedicated, slightly smaller row just below (so the
+      per-frame increment is legible without crowding the centred ``0`` at high
+      frame rates) -- plus a moving playhead marker that crosses the centre exactly
+      on the beep: a linear, calibrated reference for spotting and measuring
+      A/V-sync offset against the audible beep.
 
     Args:
         width: Output frame width in pixels (must be positive).
@@ -196,6 +200,12 @@ def compute_layout(width: int, height: int) -> Layout:
     ruler_tick_major_h = 0.020 * height
     ruler_label_font_px = round(0.022 * unit)
     ruler_label_y = ruler_y + 0.045 * height
+    # Secondary "fine increment" label row for the +-1 ticks, just below the
+    # major-tick labels and a touch smaller. Giving them their own row keeps the
+    # centred "0" uncrowded even at high frame rates, where the per-frame ticks
+    # pack too tightly to label in line without the labels colliding.
+    ruler_incr_label_font_px = round(0.017 * unit)
+    ruler_incr_label_y = ruler_label_y + 0.028 * height
     ruler_marker_h = 0.022 * height
     ruler_marker_half_w = 0.010 * unit
 
@@ -252,6 +262,8 @@ def compute_layout(width: int, height: int) -> Layout:
         ruler_tick_major_h=ruler_tick_major_h,
         ruler_label_font_px=ruler_label_font_px,
         ruler_label_y=ruler_label_y,
+        ruler_incr_label_font_px=ruler_incr_label_font_px,
+        ruler_incr_label_y=ruler_incr_label_y,
         ruler_marker_h=ruler_marker_h,
         ruler_marker_half_w=ruler_marker_half_w,
         syncinfo_font_px=syncinfo_font_px,
