@@ -247,25 +247,26 @@ smpte-leader-gen --fps 24 --bpm 120 --time-sig 4/4 \
   --tail-seconds 1.0 --end-align bar -o leader_endbar.mov
 ```
 
-When `--end-align` is active, a small **readout appears in the lower-left** with
-the metrics for nudging the seam to sample-perfect alignment:
+Whenever the metronome is active (`--bpm`), a small **readout appears in the
+lower-left** with the metrics for aligning the seam to the **bar downbeat**:
 
 ```
-END-ALIGN beat  128 BPM  23.976 fps
-beat = 11.24 f / 468.8 ms / 22500 smp
-nudge leader LEFT 0.10 f / 4.3 ms / 208 smp
+METRONOME 128 BPM  2/4  23.976 fps
+bar = 22.48 f / 937.5 ms / 45000 smp
+nudge leader LEFT 0.34 f / 14.3 ms / 686 smp
 ```
 
-The third line is the **sub-frame residual**: `--end-align` lands the file end on
-the *nearest whole frame* to the exact beat, and this is the leftover the frame
-grid cannot represent. With your music butted to the leader's end, nudging the
-leader by that amount (here 208 samples / ~0.1 frame **left** — the direction and
-size vary per render) makes the interval from the leader's last beat click to the
-music's downbeat exactly one full period. It is always sub-frame, so in practice
-the seam is already frame-accurate; the readout tells you the exact remainder (and
-its direction) if you want it sample-perfect.
+The third line is the signed nudge to apply to the **leader** so that, with your
+music butted to the leader's end, the music's downbeat lands on the metronome's
+bar grid (the leader's bar grid, extended, continues into the music). `+` = move
+the leader right, `−` = left; the direction and size vary per render. With
+**`--end-align bar`** this is sub-frame (just the leftover the frame grid cannot
+represent — so the seam is already frame-accurate and you only need it if you want
+sample-perfect). Without bar alignment it can be up to half a bar, telling you how
+far the seam currently sits from a downbeat.
 
-By default the boundary beat itself is **silent** — the file ends exactly on it,
+By default (with `--end-align`) the boundary beat itself is **silent** — the file
+ends exactly on it,
 leaving that downbeat for your music to take over. Add **`--end-cue`** to instead
 **sound** that boundary beat (the first beat of the next period) as an audio
 marker and end just after it — useful as a count-in whose final click you can

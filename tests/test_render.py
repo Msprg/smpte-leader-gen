@@ -178,20 +178,13 @@ def test_static_layer_has_ruler_near_bottom(renderer: FrameRenderer) -> None:
     assert band.std() > 0
 
 
-def test_sync_info_absent_without_end_align(renderer: FrameRenderer) -> None:
-    """The lower-left nudge readout is None unless --end-align is active."""
+def test_sync_info_absent_without_metronome(renderer: FrameRenderer) -> None:
+    """The lower-left nudge readout is None unless the metronome (--bpm) is on."""
     assert renderer._sync_info_lines is None  # noqa: SLF001
 
 
-def test_sync_info_present_and_shapes_with_end_align() -> None:
-    """With --end-align + bpm, the readout is computed and drawn into the static
-    layer's lower-left band (so it does not touch the black tail)."""
-    cfg = build_config(
-        fps="23.976", resolution="720p", output="o.mov",
-        lead_seconds=4, tail_seconds=2.0, bpm=128, time_sig="2/4",
-        subdivision=2, end_align="beat",
-    )
-    sched = build_schedule(
+def _sched_for(cfg: Config) -> Schedule:
+    return build_schedule(
         fps=cfg.fps, sample_rate=cfg.sample_rate,
         frames_per_block_override=cfg.frames_per_block,
         lead_seconds=cfg.lead_seconds, tail_frames=cfg.tail_frames,
@@ -199,18 +192,41 @@ def test_sync_info_present_and_shapes_with_end_align() -> None:
         persecond_beep=not cfg.no_persecond_beep, twopop=not cfg.no_twopop,
         count_style=cfg.count_style,
     )
-    r = FrameRenderer(cfg, sched)
+
+
+def test_sync_info_present_with_metronome_only() -> None:
+    """The readout shows whenever --bpm is set, even without --end-align, and it
+    is drawn into the static layer's lower-left band (never the black tail)."""
+    cfg = build_config(
+        fps="23.976", resolution="720p", output="o.mov",
+        lead_seconds=4, tail_seconds=2.0, bpm=128, time_sig="2/4",
+        subdivision=2,
+    )
+    r = FrameRenderer(cfg, _sched_for(cfg))
     lines = r._sync_info_lines  # noqa: SLF001
     assert lines is not None and len(lines) == 3
-    assert "END-ALIGN beat" in lines[0]
-    assert "128 BPM" in lines[0]
+    assert "METRONOME" in lines[0] and "128 BPM" in lines[0] and "2/4" in lines[0]
+    assert lines[1].startswith("bar = ")  # always references the bar
     assert lines[2].startswith(("nudge leader", "seam aligned"))
-    # The lower-left band carries the text (non-background pixels there).
     lay = r.layout
     y0 = int(lay.syncinfo_top_y - lay.syncinfo_line_h)
     y1 = int(lay.syncinfo_top_y + 3 * lay.syncinfo_line_h)
     band = r._static[y0:y1, : int(lay.cx), :]  # noqa: SLF001
     assert band.std() > 0
+
+
+def test_sync_info_references_bar_not_end_align_unit() -> None:
+    """Even with --end-align beat, the readout's period line is the bar."""
+    cfg = build_config(
+        fps="24", resolution="720p", output="o.mov", lead_seconds=4,
+        tail_seconds=2.0, bpm=120, time_sig="4/4", end_align="beat",
+    )
+    r = FrameRenderer(cfg, _sched_for(cfg))
+    lines = r._sync_info_lines  # noqa: SLF001
+    assert lines is not None
+    # 4/4 @ 120 bpm @ 24 fps: bar = 4 beats = 2.0 s = 48 frames = 96000 samples.
+    assert "48.00 f" in lines[1]
+    assert "96000 smp" in lines[1]
 
 
 def test_cairo_surface_to_rgb_shape(renderer: FrameRenderer) -> None:

@@ -330,24 +330,26 @@ class FrameRenderer:
         np.copyto(arr, np.asarray(image))
 
     def _compute_sync_info(self) -> list[str] | None:
-        """Build the lower-left end-alignment / nudge readout, or ``None``.
+        """Build the lower-left metronome / bar-downbeat nudge readout, or ``None``.
 
-        Returns ``None`` unless ``--end-align`` is active (it needs a metronome
-        grid). Otherwise it computes, for the alignment unit (beat/bar/sub):
+        Returns ``None`` unless the metronome is active (``--bpm``). Otherwise it
+        always references the **bar downbeat** (regardless of ``--end-align``) and
+        reports:
 
-          * the unit period in frames / ms / samples, and
+          * the bar period in frames / ms / samples, and
           * the signed nudge to apply to the **leader** so that, with the music
-            butted to the leader's end, the interval from the leader's last beat
-            click to the music's downbeat is exactly one full period.
+            butted to the leader's end, the music's downbeat lands on the
+            metronome's bar grid (i.e. the leader's bar grid, extended, continues
+            into the music).
 
-        The nudge is ``end_sample - boundary_sample`` (``+`` = move the leader
-        right, ``-`` = left). It is always sub-frame, because ``--end-align`` lands
-        the end on the nearest whole frame to the exact beat; this readout is the
-        leftover the frame grid could not represent.
+        The nudge is ``end_sample - nearest_bar_sample`` (``+`` = move the leader
+        right, ``-`` = left). With ``--end-align bar`` it is sub-frame (the leftover
+        the frame grid could not represent); otherwise it can be up to half a bar,
+        which tells you how far the seam sits from a downbeat.
         """
         cfg = self.config
         sched = self.schedule
-        if cfg.end_align is None or cfg.bpm is None:
+        if cfg.bpm is None:
             return None
 
         sr = sched.sample_rate
@@ -355,34 +357,28 @@ class FrameRenderer:
         fpsf = float(sched.fps)
         spf = sr / fpsf  # samples per frame
 
-        # Period (in samples) of the alignment unit.
-        if cfg.end_align == "bar":
-            unit_samples = sr * 60.0 * cfg.time_sig_beats / bpm
-        elif cfg.end_align == "subdivision":
-            unit_samples = sr * 60.0 / (bpm * cfg.subdivision)
-        else:  # "beat"
-            unit_samples = sr * 60.0 / bpm
-        if unit_samples <= 0:
+        # Always reference the bar (a full measure of the time signature).
+        bar_samples = sr * 60.0 * cfg.time_sig_beats / bpm
+        if bar_samples <= 0:
             return None
 
         start = _resolve_metronome_start(sched, cfg)
         end = sched.total_samples
-        # Exact (sample-accurate) onset of the grid boundary nearest the end.
-        m = round((end - start) / unit_samples)
-        boundary = start + round(m * unit_samples)
+        # Exact (sample-accurate) onset of the bar downbeat nearest the end.
+        m = round((end - start) / bar_samples)
+        boundary = start + round(m * bar_samples)
 
-        nudge = end - boundary  # +right / -left to complete the last period
+        nudge = end - boundary  # +right / -left so the downbeat lands on the grid
         nudge_f = nudge / spf
         nudge_ms = nudge * 1000.0 / sr
 
-        unit = cfg.end_align
-        line1 = f"END-ALIGN {unit}  {bpm:g} BPM  {self._fps_display} fps"
+        line1 = f"METRONOME {bpm:g} BPM  {cfg.time_sig}  {self._fps_display} fps"
         line2 = (
-            f"{unit} = {unit_samples / spf:.2f} f / "
-            f"{unit_samples * 1000.0 / sr:.1f} ms / {round(unit_samples)} smp"
+            f"bar = {bar_samples / spf:.2f} f / "
+            f"{bar_samples * 1000.0 / sr:.1f} ms / {round(bar_samples)} smp"
         )
         if nudge == 0:
-            line3 = "seam aligned exactly on the beat (0 smp)"
+            line3 = "seam aligned on the bar downbeat (0 smp)"
         else:
             direction = "RIGHT" if nudge > 0 else "LEFT"
             line3 = (
