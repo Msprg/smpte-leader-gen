@@ -57,6 +57,7 @@ _PASSTHROUGH_PARAMS: tuple[str, ...] = (
     "beep_level_dbfs",
     "no_persecond_beep",
     "no_twopop",
+    "no_beep",
     "bpm",
     "time_sig",
     "subdivision",
@@ -175,6 +176,9 @@ def _format_duration(total_frames: int, fps_num: int, fps_den: int) -> str:
               help="Emit only the 2-pop beep (classic).")
 @click.option("--no-twopop", is_flag=True, default=False,
               help="Disable the 2-pop accent.")
+@click.option("--no-beep", is_flag=True, default=False,
+              help="Mute all countdown beeps (per-second + 2-pop) so the "
+                   "metronome can be heard alone. The visual flash is unaffected.")
 # ---- metronome ------------------------------------------------------------
 @click.option("--bpm", type=float, default=None,
               help="Enable the audio metronome at this tempo.")

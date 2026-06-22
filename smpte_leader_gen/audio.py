@@ -149,6 +149,11 @@ def synth_beep_track(schedule: Schedule, config: Config) -> np.ndarray:
     ``beep_level_dbfs``. Tones that would run past the buffer end are clipped to
     fit. Overlapping tones are summed.
 
+    When ``config.no_beep`` is set the whole beep track is silenced (both the
+    per-second beeps and the 2-pop) so the metronome can be heard alone; only the
+    *audio* is muted -- the visual flash, which keys off the schedule's beep
+    frames, is unaffected.
+
     Args:
         schedule: The resolved timing plan (provides cue onsets and length).
         config: The run configuration (beep frequency / length / level).
@@ -157,6 +162,11 @@ def synth_beep_track(schedule: Schedule, config: Config) -> np.ndarray:
         A float64 mono array of length ``schedule.total_samples``.
     """
     buffer = np.zeros(schedule.total_samples, dtype=np.float64)
+
+    # Fully mute the countdown beeps (per-second + 2-pop) on request, leaving the
+    # metronome (and the visual flash) untouched.
+    if config.no_beep:
+        return buffer
 
     # Beep length in samples, derived via the same cumulative-rounding rule used
     # for frame boundaries: round(beep_frames * sr * den / num).

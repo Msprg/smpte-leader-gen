@@ -238,6 +238,7 @@ hyphens or underscores) is read first; **explicit CLI flags override file values
 | `--beep-level-dbfs` | float | `-12` | Peak level of the beep. |
 | `--no-persecond-beep` | flag | off | Only the 2-pop fires (classic). |
 | `--no-twopop` | flag | off | Disable the 2-pop accent. |
+| `--no-beep` | flag | off | Mute **all** countdown beeps (per-second + 2-pop) so the metronome is heard alone. The visual flash is unaffected. |
 
 ### Metronome (audio clicks + top-center animation; enabled by `--bpm`)
 
@@ -275,15 +276,23 @@ smpte-leader-gen --fps 24 --bpm 120 --time-sig 4/4 \
 Whenever the metronome is active (`--bpm`), a small **bold turquoise readout
 appears on the left** (hugging the left frame border, its first line just below
 the horizontal centre line) with the metrics for aligning the seam to the **bar
-downbeat**:
+downbeat**. The header is just the metronome parameters (`BPM`, time signature,
+and `sub N` when subdividing) — the fps is omitted because it already shows in
+the top-left frame counter — and the bar period and nudge are reflowed onto short
+lines so the block stays clear of the inner registration rectangle:
 
 ```
-METRONOME 128 BPM  2/4  23.976 fps
-bar = 22.48 f / 937.5 ms / 45000 smp
-nudge leader LEFT 0.34 f / 14.3 ms / 686 smp
+128 BPM  2/4  sub 2
+bar = 22.48 f
+    / 937.5 ms
+    / 45000 smp
+nudge leader LEFT
+      0.34 f
+    / 14.3 ms
+    / 686 smp
 ```
 
-The third line is the signed nudge to apply to the **leader** so that, with your
+The nudge is the signed amount to apply to the **leader** so that, with your
 music butted to the leader's end, the music's downbeat lands on the metronome's
 bar grid (the leader's bar grid, extended, continues into the music). `+` = move
 the leader right, `−` = left; the direction and size vary per render. With
@@ -419,7 +428,9 @@ twopop_frame = ffop_frame − 2·F   (== preroll + (L−2)·F)
 
 It is one of the per-second beeps but flagged so the **flash accents it** (rendered
 larger / in a second accent color). With `--no-persecond-beep` the 2-pop is the
-*only* beep that fires; `--no-twopop` removes the accent.
+*only* beep that fires; `--no-twopop` removes the accent. `--no-beep` silences the
+whole beep track (per-second **and** 2-pop) so the metronome plays alone; the
+visual flash still fires (it keys off the schedule, not the audio).
 
 Because the 2-pop is bound to the **"2"** second, it requires `--lead-seconds >= 2`.
 A shorter leader with the 2-pop enabled is rejected up front — use `--no-twopop`

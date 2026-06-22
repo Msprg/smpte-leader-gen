@@ -173,6 +173,7 @@ class Config(BaseModel):
     beep_level_dbfs: float = -12.0
     no_persecond_beep: bool = False
     no_twopop: bool = False
+    no_beep: bool = False
     # metronome
     bpm: float | None = None
     time_sig: str = "4/4"

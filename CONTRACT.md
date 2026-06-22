@@ -254,6 +254,7 @@ class Config(BaseModel):
     beep_level_dbfs: float = -12.0
     no_persecond_beep: bool = False
     no_twopop: bool = False
+    no_beep: bool = False              # mute the whole beep track (keep metronome + flash)
     # metronome
     bpm: float | None = None
     time_sig: str = "4/4"
@@ -643,7 +644,7 @@ Console entrypoint name: `smpte-leader-gen` -> `smpte_leader_gen.cli:main`.
 Flag list (exact names; map hyphens to underscores in the function via click auto): `--lead-seconds`,
 `--tail-seconds`, `--preroll-seconds`, `--fps`, `--resolution`, `--output/-o` (required),
 `--profile`, `--container`, `--start-timecode`, `--no-drop-frame`, `--sample-rate`, `--bit-depth`,
-`--beep-freq`, `--beep-frames`, `--beep-level-dbfs`, `--no-persecond-beep`, `--no-twopop`, `--bpm`,
+`--beep-freq`, `--beep-frames`, `--beep-level-dbfs`, `--no-persecond-beep`, `--no-twopop`, `--no-beep`, `--bpm`,
 `--time-sig`, `--subdivision`, `--metronome-start`, `--metronome-level-dbfs`,
 `--metronome-accent-freq`, `--metronome-click-freq`, `--metronome-sub-freq`, `--count-style`,
 `--bg-color`, `--fg-color`, `--accent-color`, `--show-timecode-burnin`, `--no-clock`,

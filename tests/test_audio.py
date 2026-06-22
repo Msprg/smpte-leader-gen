@@ -212,6 +212,32 @@ def test_persecond_beeps_count_and_twopop_merge():
         assert np.any(np.abs(buffer[cue.sample : cue.sample + 64]) > 1e-6)
 
 
+def test_no_beep_silences_whole_beep_track_but_keeps_metronome():
+    """--no-beep mutes every beep (per-second + 2-pop) yet leaves the schedule's
+    cues (so the visual flash is unaffected) and the metronome audible."""
+    config = make_config(fps="24", lead_seconds=8, bpm=120, no_beep=True)
+    schedule = make_schedule(config)
+    # The cues still exist (the flash keys off them); only the audio is silent.
+    assert len(schedule.beep_cues) == 8
+    beep = synth_beep_track(schedule, config)
+    assert beep.shape == (schedule.total_samples,)
+    assert not np.any(beep)  # entirely silent
+    # The metronome track is unaffected, so the final mix still has energy.
+    metro = synth_metronome(schedule, config)
+    assert np.any(np.abs(metro) > 1e-6)
+    stereo, _ = build_audio(schedule, config)
+    assert np.any(np.abs(stereo) > 1e-6)
+
+
+def test_no_beep_default_off_keeps_beeps():
+    """Without --no-beep the beep track sounds as usual (regression guard)."""
+    config = make_config(fps="24", lead_seconds=8)
+    assert config.no_beep is False
+    schedule = make_schedule(config)
+    beep = synth_beep_track(schedule, config)
+    assert np.any(np.abs(beep) > 1e-6)
+
+
 # ---------------------------------------------------------------------------
 # Total samples == round(total_frames * sr * den / num)
 # ---------------------------------------------------------------------------

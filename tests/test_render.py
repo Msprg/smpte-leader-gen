@@ -230,10 +230,15 @@ def test_sync_info_present_with_metronome_only() -> None:
     )
     r = FrameRenderer(cfg, _sched_for(cfg))
     lines = r._sync_info_lines  # noqa: SLF001
-    assert lines is not None and len(lines) == 3
-    assert "METRONOME" in lines[0] and "128 BPM" in lines[0] and "2/4" in lines[0]
+    assert lines is not None and len(lines) > 3  # header + reflowed metrics
+    # Header drops the redundant "METRONOME" word and the fps (shown elsewhere),
+    # and now carries the subdivision when subdividing.
+    assert "METRONOME" not in lines[0]
+    assert "fps" not in lines[0]
+    assert "128 BPM" in lines[0] and "2/4" in lines[0] and "sub 2" in lines[0]
+    # The bar period and the nudge are reflowed onto their own short lines.
     assert lines[1].startswith("bar = ")  # always references the bar
-    assert lines[2].startswith(("nudge leader", "seam aligned"))
+    assert any(ln.startswith(("nudge leader", "seam aligned")) for ln in lines[2:])
     lay = r.layout
     y0 = int(lay.syncinfo_top_y - lay.syncinfo_line_h)
     y1 = int(lay.syncinfo_top_y + 3 * lay.syncinfo_line_h)
@@ -251,8 +256,9 @@ def test_sync_info_references_bar_not_end_align_unit() -> None:
     lines = r._sync_info_lines  # noqa: SLF001
     assert lines is not None
     # 4/4 @ 120 bpm @ 24 fps: bar = 4 beats = 2.0 s = 48 frames = 96000 samples.
-    assert "48.00 f" in lines[1]
-    assert "96000 smp" in lines[1]
+    # The metrics are reflowed across the bar block (one per line).
+    assert lines[1] == "bar = 48.00 f"
+    assert any(ln.endswith("96000 smp") for ln in lines)
 
 
 def _label_pixels_at(r: FrameRenderer, offset: int) -> int:
@@ -300,7 +306,15 @@ def test_sync_info_is_bold_turquoise() -> None:
     # to FAIL if the x move or the raised y position were reverted.
     assert xs.min() < cfg.width * 0.025         # new ~0.013 w passes; old 0.025/0.045 w fails
     assert cfg.height * 0.50 < ys.min() < cfg.height * 0.55  # first line just below centre
-    assert ys.max() < cfg.height * 0.62         # block stays upper-middle; old 0.78/0.81 fail
+    # The block now reflows onto several short lines; its bottom is bounded by the
+    # last line's baseline. It stays in the upper-middle (the old 0.78/0.81 block
+    # positions would fail the 0.72 h guard) and never reaches the ruler.
+    n_lines = len(r._sync_info_lines)  # noqa: SLF001
+    block_bottom = (
+        r.layout.syncinfo_top_y + (n_lines - 1) * r.layout.syncinfo_line_h
+    )
+    assert block_bottom < cfg.height * 0.72
+    assert ys.max() < block_bottom + r.layout.syncinfo_font_px
     assert ys.max() < r.layout.ruler_y          # never reaches the ruler
     assert abs(xs.min() - r.layout.syncinfo_left_x) < cfg.width * 0.01
 

@@ -399,20 +399,33 @@ class FrameRenderer:
         nudge_f = nudge / spf
         nudge_ms = nudge * 1000.0 / sr
 
-        line1 = f"METRONOME {bpm:g} BPM  {cfg.time_sig}  {self._fps_display} fps"
-        line2 = (
-            f"bar = {bar_samples / spf:.2f} f / "
-            f"{bar_samples * 1000.0 / sr:.1f} ms / {round(bar_samples)} smp"
-        )
+        # Header: just the metronome parameters. "METRONOME" and the fps are
+        # dropped as redundant -- the readout only exists when the metronome is
+        # active, and the fps already shows in the top-left frame counter.
+        sub = f"  sub {cfg.subdivision}" if cfg.subdivision > 1 else ""
+        header = f"{bpm:g} BPM  {cfg.time_sig}{sub}"
+
+        # Reflow the bar period and the nudge onto several short lines so the
+        # block stays narrow (clear of the inner registration rectangle's left
+        # edge) at the cost of a little more height. Each "/ ..." line continues
+        # the metric above it; all value columns align (the values start at the
+        # same column as "bar = " / a six-space indent).
+        bar_lines = [
+            f"bar = {bar_samples / spf:.2f} f",
+            f"    / {bar_samples * 1000.0 / sr:.1f} ms",
+            f"    / {round(bar_samples)} smp",
+        ]
         if nudge == 0:
-            line3 = "seam aligned on the bar downbeat (0 smp)"
+            nudge_lines = ["seam aligned on the", "bar downbeat (0 smp)"]
         else:
             direction = "RIGHT" if nudge > 0 else "LEFT"
-            line3 = (
-                f"nudge leader {direction} {abs(nudge_f):.2f} f / "
-                f"{abs(nudge_ms):.1f} ms / {abs(nudge)} smp"
-            )
-        return [line1, line2, line3]
+            nudge_lines = [
+                f"nudge leader {direction}",
+                f"      {abs(nudge_f):.2f} f",
+                f"    / {abs(nudge_ms):.1f} ms",
+                f"    / {abs(nudge)} smp",
+            ]
+        return [header, *bar_lines, *nudge_lines]
 
     def _draw_sync_info(self, arr: np.ndarray) -> None:
         """Draw the left-side end-alignment / nudge block (Pillow, left-aligned)."""

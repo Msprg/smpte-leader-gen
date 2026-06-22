@@ -116,6 +116,7 @@ Use **`click`** (or argparse) for the CLI and **pydantic v2** (or a validated da
 | `--beep-level-dbfs` | float | `-12` | Peak level of beep. |
 | `--no-persecond-beep` | flag | off | If set, only the 2-pop fires (classic). |
 | `--no-twopop` | flag | off | Disable the 2-pop accent. |
+| `--no-beep` | flag | off | Mute the whole beep track (per-second + 2-pop); the metronome and the visual flash are unaffected. |
 
 ### 5.4 Metronome (audio clicks + top-center animation; enabled by `--bpm`)
 | Flag | Type | Default | Notes |
@@ -189,6 +190,7 @@ All synthesis in NumPy float64, summed into a stereo buffer, peak-checked, then 
 - Waveform: sine at `--beep-freq` (1 kHz), length `--beep-frames` frames → `round(beep_frames · sr · den/num)` samples.
 - Onset at `frame_start_sample(i)` for each per-second beep frame: the **first frame of each leader-second** (`i % F == 0`) within the countdown region. (If `--no-persecond-beep`, emit only the 2-pop.)
 - **2-pop:** at frame `i_2 = total_countdown_frames - 2·F` (i.e. 2 leader-seconds before t=0, the "2" number). It coincides with a per-second beep; flag it so the flash can accent it. Skip if `--no-twopop`.
+- **`--no-beep`** silences the entire beep track (per-second **and** 2-pop) — useful to hear the metronome alone. Only the audio is muted; the schedule's beep frames (and hence the visual flash) are unchanged.
 - Apply a **very short raised-cosine fade** (≈1 ms) at head/tail to prevent clicks **without** softening the perceived onset; keep the first sample at the exact boundary. Document the fade length.
 - Level normalized to `--beep-level-dbfs` peak.
 
