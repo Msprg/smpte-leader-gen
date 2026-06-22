@@ -30,7 +30,7 @@ from smpte_leader_gen.timing import Schedule, build_schedule
 # sha256 of the packed RGB24 bytes of the 2-pop ("2") frame, 1920x1080 @ 24 fps,
 # lead=8, tail=2, preroll=0, count_style=full. Baked from this environment.
 GOLDEN_2POP_SHA256 = (
-    "b573ad0371a3b3eaa8203930668d64cd41b3affbecfd50eb6709334482024f87"
+    "2f3e01459a9158318c3f3fa0fcfcdf2c821109ecd4502541435fa385590245d0"
 )
 
 

@@ -116,7 +116,7 @@ def compute_layout(width: int, height: int) -> Layout:
       metronome dots there). All use ``round(0.045 * unit)``.
     * ``flash_radius = 0.05 * unit`` at the FIXED right-middle ``(0.90 * width,
       0.5 * height)`` -- clear of the inner aspect rectangle's right edge;
-      ``twopop_flash_radius = 1.6 * flash_radius``.
+      ``twopop_flash_radius = 1.3 * flash_radius``.
     * **Registration geometry**: semi-transparent full-frame diagonals (drawn by the
       renderer from the corners) and centre crosshair, plus two opaque rectangles --
       a full-frame **border** marking the exact video extent and a smaller centred
@@ -192,7 +192,7 @@ def compute_layout(width: int, height: int) -> Layout:
     flash_radius = 0.05 * unit
     flash_center_x = 0.90 * width
     flash_center_y = 0.5 * height
-    twopop_flash_radius = 1.6 * flash_radius
+    twopop_flash_radius = 1.3 * flash_radius
 
     # Registration geometry. The diagonals (and the centre crosshair) are drawn
     # semi-transparent so they read as a faint background reference rather than a

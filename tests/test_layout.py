@@ -138,7 +138,7 @@ def test_documented_ratios(width: int, height: int) -> None:
     assert layout.counter_font_px == round(0.045 * unit)
     assert layout.timer_font_px == round(0.045 * unit)
     assert layout.flash_radius == pytest.approx(0.05 * unit)
-    assert layout.twopop_flash_radius == pytest.approx(1.6 * layout.flash_radius)
+    assert layout.twopop_flash_radius == pytest.approx(1.3 * layout.flash_radius)
 
 
 @pytest.mark.parametrize(("width", "height"), PRESETS)

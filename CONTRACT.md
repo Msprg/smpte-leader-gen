@@ -373,7 +373,7 @@ def compute_layout(width: int, height: int) -> Layout:
           flash_center_x = cx + clock_radius*cos(-45deg-ish) ... DECISION: place flash disc at a
           FIXED corner = (width*0.85, height*0.5) (right-middle, clearly separate from clock) OR
           at clock edge. Choose: right-middle fixed: flash_center=(0.85*W, 0.5*H). twopop radius
-          = 1.6*flash_radius. Keep deterministic.
+          = 1.3*flash_radius. Keep deterministic.
        burnin near top-left: (0.16*W, 0.08*H)."""
 ```
 
