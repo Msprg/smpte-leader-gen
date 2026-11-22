@@ -3,7 +3,7 @@
 # Uses the project virtualenv interpreter so targets are reproducible
 # regardless of which Python is on the caller's PATH.
 
-PYTHON := /home/administrator/smpte-leader-gen/.venv/bin/python
+PYTHON ?= .venv/bin/python
 PIP := $(PYTHON) -m pip
 
 .DEFAULT_GOAL := verify

@@ -35,13 +35,13 @@ dev = ["pytest>=7.4"]
 smpte-leader-gen = "smpte_leader_gen.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/brainit-sk/smpte-leader-gen"
+Homepage = "https://github.com/Msprg/smpte-leader-gen"
 
 [tool.setuptools]
 packages = ["smpte_leader_gen"]
 
 [tool.setuptools.package-data]
-smpte_leader_gen = ["fonts/*.ttf"]
+smpte_leader_gen = ["fonts/*.ttf", "fonts/LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

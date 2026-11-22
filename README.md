@@ -504,7 +504,8 @@ or directly:
 
 The suite is split per CONTRACT §11: `test_timing.py`, `test_audio.py`,
 `test_layout.py`, `test_render.py`, `test_config.py`, `test_profiles.py`,
-`test_encode.py`, and `test_integration.py`.
+`test_encode.py`, and `test_integration.py`, plus `test_cli.py`,
+`test_pipeline.py`, and `test_review_fixes.py`.
 
 The **unit tests** (timing, audio synthesis, layout, render, config, profiles,
 encode command construction) are pure and run without FFmpeg. The
@@ -543,4 +544,8 @@ Makefile
 
 ## License
 
-MIT.
+MIT. See [`LICENSE`](LICENSE).
+
+The bundled DejaVu Sans Mono fonts (`smpte_leader_gen/fonts/`) are distributed
+under their own license (Bitstream Vera / Arev, DejaVu changes in the public
+domain). See [`smpte_leader_gen/fonts/LICENSE`](smpte_leader_gen/fonts/LICENSE).
