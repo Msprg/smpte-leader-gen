@@ -5,6 +5,14 @@ inspired by the **SMPTE Universal Countdown Leader** ("the countdown clock"). Us
 it to verify A/V sync, frame timing, and audio alignment across a playback or
 editing pipeline.
 
+![Animated preview: four seconds of a leader at 24 fps with a 120 BPM metronome. The wand sweeps once per second, the red disc flashes on every beep, and the beat dots march across the top.](docs/images/leader-preview.gif)
+
+*Four seconds (counting 4 → 1, including the 2-pop on the "2") of the
+[metronome example](#with-a-metronome---bpm-enables-it) below. This GIF is
+silent and browser GIF timing is approximate, so treat it as a preview only, not
+as a sync reference. More stills are in
+[What the output looks like](#what-the-output-looks-like).*
+
 It is **not** a strict reproduction of the SMPTE 301 leader. It is an *AV-sync
 test generator* that borrows the leader's visual language (rotating clock + sweep
 wand, big descending numbers, a single-frame reference beep) and adds:
@@ -40,6 +48,21 @@ A/V drift** over the whole file.
 Frames are rendered in-process with **pycairo** (vector clock/wand) plus **Pillow**
 (text), audio is synthesized in-process with **NumPy**, and the two are **muxed in a
 single FFmpeg invocation** (raw RGB24 frames piped to FFmpeg stdin + a temp WAV).
+
+---
+
+## What the output looks like
+
+These are single frames from real renders (1920×1080, encoded with the
+lossless `x264lossless` profile, then scaled down for this page). The flags
+under each image are the ones that change the picture; the profile does not.
+
+| | |
+|---|---|
+| ![Mid-countdown frame at default settings: big number 5, wand one third of the way round, counter 08/23.976 top left, timer 4.671 top right, audio ruler along the bottom.](docs/images/countdown.png) | ![The 2-pop frame at default settings: big number 2, wand at 12 o'clock, red flash disc lit on the right, ruler playhead on zero.](docs/images/two-pop.png) |
+| **Mid-countdown.** Default settings (`smpte-leader-gen -o leader.mov`), frame 80. Counter top left, countdown timer top right, audio ruler along the bottom, registration geometry everywhere else. | **The 2-pop.** Same render, frame 144: the first frame of the "2". The flash disc fires on the exact frame the beep starts, and the ruler playhead crosses zero. |
+| ![Metronome with the dots style: downbeat dot and sub-pulse dot lit red at the top, turquoise readout on the left telling the editor to nudge the leader left by 7.25 frames.](docs/images/metronome-dots.png) | ![Metronome with the pendulum style: pendulum at the left extreme with its bob lit red, timecode burn-in 00:00:05:12 below the clock.](docs/images/metronome-pendulum.png) |
+| **Metronome, dots style.** `--bpm 128 --time-sig 2/4 --subdivision 2` at the default 23.976 fps, frame 134. The beat and sub-pulse rows light up on each click. The turquoise readout shows how far to nudge the leader so your music's downbeat lands on the bar grid. | **Metronome, pendulum style.** `--fps 24 --bpm 120 --metronome-style pendulum --show-timecode-burnin`, frame 132. The pendulum reaches an extreme on every beat. The timecode burn-in sits below the clock. |
 
 ---
 
