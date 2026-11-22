@@ -21,7 +21,9 @@ wand, big descending numbers, a single-frame reference beep) and adds:
 - a zero-padded **per-second frame counter** in the **top-left**, whose denominator
   is the **actual fps** so near-identical rates stay distinct (e.g. `07/23.976`
   vs `07/24`),
-- a **flashing circle** that flashes on the exact frame an audio cue fires,
+- a **flashing circle** that lights on the exact frame each sync beep starts and
+  stays lit for the beep's length (`--beep-frames`); metronome clicks do not
+  light it,
 - a **bottom "audio ruler"**: a per-frame tick scale **centred on zero** (the beep
   position in the middle) with major ticks labelled in **milliseconds** of A/V
   offset (and the two ticks flanking zero always labelled, so the per-frame
@@ -31,8 +33,9 @@ wand, big descending numbers, a single-frame reference beep) and adds:
 - **registration geometry**: a **full-frame border** marking the exact video extent,
   a smaller centred rectangle sharing the video's aspect ratio, plus semi-transparent
   corner-to-corner diagonals and a centre crosshair,
-- a **single-frame 1 kHz sync beep** every leader-second, preserving the classic
-  **"2-pop"** accent,
+- a **single-frame 1 kHz sync beep** every leader-second. The beep on the "2" is
+  the classic **"2-pop"**; it sounds the same as the others and is marked on
+  screen by a larger flash,
 - an **optional metronome** (with subdivisions and an accented downbeat), shown by a
   top-center animation that ticks in lock-step with the audio clicks — by default a
   **row of beat dots** that light red one beat at a time (the downbeat larger), or
@@ -55,7 +58,8 @@ single FFmpeg invocation** (raw RGB24 frames piped to FFmpeg stdin + a temp WAV)
 
 These are single frames from real renders (1920×1080, encoded with the
 lossless `x264lossless` profile, then scaled down for this page). The flags
-under each image are the ones that change the picture; the profile does not.
+under each image are the ones that change what is drawn; the profile only
+changes how it is encoded.
 
 | | |
 |---|---|
@@ -70,7 +74,9 @@ under each image are the ones that change the picture; the profile does not.
 
 - **Python 3.11+** (developed and tested on 3.12).
 - **FFmpeg ≥ 6.0** on `PATH` (`ffmpeg` and `ffprobe`). The tool fails fast if the
-  detected FFmpeg major version is below 6. (Tested with FFmpeg 6.1.1.)
+  detected FFmpeg major version is below 6, or if it cannot parse the version
+  string (git snapshot builds that report `ffmpeg version N-…` are rejected).
+  (Tested with FFmpeg 6.1.1.)
 - System cairo libraries for `pycairo` (`libcairo2`, `pkg-config`, and a build
   toolchain).
 
@@ -87,10 +93,12 @@ cairo/Pillow/FFmpeg versions.
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y libcairo2-dev pkg-config ffmpeg build-essential
+sudo apt-get install -y libcairo2-dev pkg-config ffmpeg build-essential \
+  python3-dev python3-venv
 ```
 
-`libcairo2-dev` + `pkg-config` are needed to build/install `pycairo`. Ensure
+`libcairo2-dev`, `pkg-config` and `python3-dev` are needed to build `pycairo`
+from source; `python3-venv` provides `python3 -m venv` on Ubuntu. Ensure
 `ffmpeg -version` reports **6.0 or newer**:
 
 ```bash
@@ -131,8 +139,10 @@ pip install -e ".[dev]"
 All examples assume the venv is active (or prefix the command with
 `.venv/bin/smpte-leader-gen`). `--output / -o` is **required**. The **container**
 is resolved by precedence **`--container` > output file extension > profile
-default**, and must be allowed by the chosen profile (an incompatible pairing,
-e.g. ProRes into `.mp4`, is rejected up front with a clear error). The resolved
+default**, and must be allowed by the chosen profile. Only `.mov`, `.mkv` and
+`.mp4` extensions take part; any other extension (e.g. `.avi`) silently gets the
+profile's default container. An incompatible pairing (e.g. ProRes into `.mp4`)
+is rejected up front with a clear error. The resolved
 container governs the actual muxer, so `--container mov -o leader.mkv` writes a
 QuickTime/MOV stream regardless of the `.mkv` extension.
 
@@ -156,9 +166,11 @@ smpte-leader-gen \
   -o leader_23976.mov
 ```
 
-`23.976` is mapped to the exact broadcast rational `24000/1001` (likewise `29.97`
-→ `30000/1001`, `59.94` → `60000/1001`). You may also pass a bare integer (`30`)
-or a rational (`24000/1001`).
+`23.976` is mapped to the exact broadcast rational `24000/1001` (likewise `23.98`
+→ `24000/1001`, `29.97` → `30000/1001`, `59.94` → `60000/1001`). Only those exact
+strings are mapped; any other decimal is taken literally (`29.970` becomes
+`2997/100`, which is not a drop-frame rate). You may also pass a bare integer
+(`30`) or a rational (`24000/1001`).
 
 ### H.264 MP4 (maximum compatibility)
 
@@ -172,7 +184,8 @@ smpte-leader-gen \
 
 > Note: H.264 is inter-frame and slightly softens single-frame markers (flash,
 > 2-pop). For frame-exact editorial checks prefer an intra-frame profile
-> (`prores422hq`, `ffv1`, or `x264lossless`).
+> (`prores422hq`, `prores4444` or `ffv1`), or `x264lossless`, which is lossless
+> but uses x264's default long GOP rather than intra-only frames.
 
 ### With a metronome (`--bpm` enables it)
 
@@ -203,11 +216,13 @@ Whenever `--bpm` is set, a top-center animation appears, in one of two styles
   — and each dot flashes briefly rather than smearing.
 - **`pendulum`**: an inverted "Maelzel" pendulum that swings one beat per
   half-swing, reaching an extreme exactly on each beat; the bob lights up on every
-  beat (brighter, with a ring, on the downbeat) and the pivot pulses on every
+  beat (larger, with a ring, on the downbeat) and the pivot pulses on every
   click, so subdivisions read as a finer tick.
 
 Either way the motion is derived from the same sample grid as the audio, so the
-visual stays locked to the clicks.
+visual stays locked to the clicks. The animation runs during the pre-roll and
+the countdown; the black tail after t=0 shows no animation, even where the
+clicks continue (see `--end-align` below).
 
 ### SMPTE count style (fixed 8 → 2)
 
@@ -219,8 +234,11 @@ smpte-leader-gen \
 ```
 
 `--count-style smpte` shows the classic fixed `8,7,6,5,4,3,2` sequence (requires
-`--lead-seconds >= 8`). The `"2"` second carries the 2-pop. The default
-`--count-style full` instead counts `L → 1`.
+`--lead-seconds >= 8`). The `"2"` second carries the 2-pop. The last
+leader-second before t=0 shows no number, and with `--lead-seconds` above 8 the
+first `L − 8` seconds show none either. Per-second beeps still fire on those
+seconds; add `--no-persecond-beep` for a count where only the 2-pop sounds. The
+default `--count-style full` instead counts `L → 1`.
 
 ---
 
@@ -229,6 +247,9 @@ smpte-leader-gen \
 Grouped to mirror SPEC §5. Run `smpte-leader-gen --help` for the authoritative,
 in-tool listing. `--config FILE` (YAML/JSON, keys mirror the flag names with
 hyphens or underscores) is read first; **explicit CLI flags override file values**.
+`-o` is still required on the command line (an `output` key in the file never
+takes effect), and unknown keys in the file are ignored silently, so check
+spelling. `--version` prints the tool version.
 
 ### Core
 
@@ -236,8 +257,8 @@ hyphens or underscores) is read first; **explicit CLI flags override file values
 |---|---|---|---|
 | `--lead-seconds` | int | `8` | Number of leader-seconds counted down (≥ 1). |
 | `--tail-seconds` | float | `2` | Black tail after t=0, in leader-seconds (≥ 0; may be 0). |
-| `--preroll-seconds` | float | `0` | Optional black/slate before the countdown (≥ 0). |
-| `--fps` | str | `24000/1001` | Preset (`23.976`,`24`,`25`,`29.97`,`30`,`50`,`59.94`,`60`), integer, or `num/den`. Broadcast decimals map to exact rationals. |
+| `--preroll-seconds` | float | `0` | Optional static slate before the countdown, in leader-seconds (≥ 0). It shows the background, registration geometry, clock face, ruler, counter, timer and metronome animation, but no wand, number, flash or beeps. |
+| `--fps` | str | `24000/1001` | Preset (`23.976`,`24`,`25`,`29.97`,`30`,`50`,`59.94`,`60`), integer, or `num/den`. The exact strings `23.976`/`23.98`, `29.97` and `59.94` map to the /1001 rationals; other decimals are taken literally. |
 | `--resolution` | str | `1080p` | Preset (`720p`,`1080p`,`2kdci`,`uhd4k`) or `WxH`. |
 | `--output` / `-o` | path | **required** | Output file path. |
 
@@ -246,8 +267,8 @@ hyphens or underscores) is read first; **explicit CLI flags override file values
 | Flag | Type | Default | Notes |
 |---|---|---|---|
 | `--profile` | choice | `prores422hq` | One of the profiles in the table below. |
-| `--container` | choice | from profile | `mov` / `mkv` / `mp4`. Must be allowed by the profile. |
-| `--start-timecode` | str | `00:00:00:00` | Embedded SMPTE timecode start. |
+| `--container` | choice | from extension, else profile | `mov` / `mkv` / `mp4`. Must be allowed by the profile. |
+| `--start-timecode` | str | `00:00:00:00` | Embedded SMPTE timecode start. At 29.97 / 59.94 (drop-frame) write it with `;` (e.g. `01:00:00;00`): a `:` value is read as a non-drop frame count and re-labelled, so `01:00:00:00` is embedded as `01:00:03;18` at 29.97 (`01:00:03;36` at 59.94). Field ranges are not checked. |
 | `--no-drop-frame` | flag | off | Disable drop-frame (auto-on for 29.97 / 59.94). |
 
 ### Audio
@@ -258,7 +279,7 @@ hyphens or underscores) is read first; **explicit CLI flags override file values
 | `--bit-depth` | choice | `24` | `16` or `24` (PCM). |
 | `--beep-freq` | float | `1000` | Sync beep frequency (Hz, > 0). |
 | `--beep-frames` | int | `1` | Beep length in frames (≥ 1). |
-| `--beep-level-dbfs` | float | `-12` | Peak level of the beep. |
+| `--beep-level-dbfs` | float | `-12` | Beep peak level before the master gain (see the note below the metronome table). |
 | `--no-persecond-beep` | flag | off | Only the 2-pop fires (classic). |
 | `--no-twopop` | flag | off | Disable the 2-pop accent. |
 | `--no-beep` | flag | off | Mute **all** countdown beeps (per-second + 2-pop) so the metronome is heard alone. The visual flash is unaffected. |
@@ -268,16 +289,23 @@ hyphens or underscores) is read first; **explicit CLI flags override file values
 | Flag | Type | Default | Notes |
 |---|---|---|---|
 | `--bpm` | float | none | Presence enables the metronome (10–999). |
-| `--time-sig` | str | `4/4` | `beats/value`; first beat of each bar is accented. |
-| `--subdivision` | int | `1` | Clicks per beat (1=quarter, 2=eighth, 4=sixteenth…). |
-| `--metronome-start` | str | `0` | `0` (file start), `t0` (at FFOP), or seconds offset. |
-| `--metronome-level-dbfs` | float | `-14` | |
+| `--time-sig` | str | `4/4` | `beats/value`; first beat of each bar is accented. Only `beats` affects timing: `--bpm` counts those beats whatever the note value, so `6/8` at 120 gives six clicks per bar at 120 BPM. |
+| `--subdivision` | int | `1` | Clicks per beat (1 = one click per beat, 2 = two, 4 = four…). |
+| `--metronome-start` | str | `0` | `0` (file start), `t0` (at FFOP), or an offset in real (wall-clock) seconds from the start of the file. |
+| `--metronome-level-dbfs` | float | `-14` | Click peak level before the master gain (see the note below). |
 | `--metronome-accent-freq` | float | `2000` | Downbeat click frequency. |
 | `--metronome-click-freq` | float | `1500` | Beat click frequency. |
 | `--metronome-sub-freq` | float | `1200` | Subdivision click frequency. |
 | `--metronome-style` | choice | `dots` | Visual style: `dots` (row of beat lights) or `pendulum` (swinging arm). |
 | `--end-align` | choice | none | `beat`/`bar`/`subdivision`: extend the black tail so the output ends exactly on the next metronome grid point (requires `--bpm`). |
-| `--end-cue` | flag | off | With `--end-align`, sound the final boundary beat as an audio cue and end just after it (instead of ending silently on the boundary). |
+| `--end-cue` | flag | off | Requires `--end-align`. Sound the final boundary beat as an audio cue and end just after it (instead of ending silently on the boundary). |
+
+**Output level.** The beep and click levels set the peaks of the individual
+sounds before mixing. The finished mix is then multiplied by one gain for the
+whole file: +6 dB, reduced if needed so the loudest peak lands at −1 dBFS. With
+the defaults the beep comes out near −6 dBFS and the clicks near −8 dBFS. Set a
+sound louder than about −7 dBFS and the whole mix is scaled so that its peak sits
+at −1 dBFS.
 
 #### Ending on a downbeat (`--end-align`)
 
@@ -285,7 +313,8 @@ When you butt-join your music to the end of the leader, `--end-align` makes the
 file end land exactly where the metronome's next **beat** (or **bar** /
 **subdivision**) would fall, so the song's downbeat continues the click grid
 seamlessly. The black tail is only ever **extended** (never shortened) to reach
-that boundary, and the metronome keeps ticking through the tail up to it.
+that boundary, and the metronome keeps clicking through the black tail up to it
+(the on-screen animation stops at t=0).
 Alignment is computed in the frame domain — the granularity you cut on — so it is
 frame-accurate (sample-exact when the unit spans a whole number of frames, e.g.
 integer fps with a compatible tempo; within half a frame otherwise).
@@ -315,14 +344,23 @@ nudge leader LEFT
     / 686 smp
 ```
 
-The nudge is the signed amount to apply to the **leader** so that, with your
-music butted to the leader's end, the music's downbeat lands on the metronome's
-bar grid (the leader's bar grid, extended, continues into the music). `+` = move
-the leader right, `−` = left; the direction and size vary per render. With
-**`--end-align bar`** this is sub-frame (just the leftover the frame grid cannot
-represent — so the seam is already frame-accurate and you only need it if you want
-sample-perfect). Without bar alignment it can be up to half a bar, telling you how
-far the seam currently sits from a downbeat.
+(That block comes from `--bpm 128 --time-sig 2/4 --subdivision 2 --lead-seconds 5
+--tail-seconds 1 --end-align bar` at the default 23.976 fps.)
+
+The nudge is the amount to move the **leader** so that, with your music butted
+to the leader's end, the music's downbeat lands on the metronome's bar grid (the
+leader's bar grid, extended, continues into the music). The readout names the
+direction (`nudge leader RIGHT` or `nudge leader LEFT`) and gives the size in
+frames, milliseconds and samples; the direction and size vary per render. When
+the seam already sits exactly on a downbeat, the last two lines read
+`seam aligned on the` / `bar downbeat (0 smp)` instead. With
+**`--end-align bar`** the nudge is sub-frame (just the leftover the frame grid
+cannot represent — so the seam is already frame-accurate and you only need it if
+you want sample-perfect). Without bar alignment it can be up to half a bar,
+telling you how far the seam currently sits from a downbeat. With `--end-cue`
+the file runs about two frames past the boundary so the final click can ring
+out, and the readout includes that overshoot (for the `--end-cue` example below
+it reads `nudge leader RIGHT` 2.00 f).
 
 By default (with `--end-align`) the boundary beat itself is **silent** — the file
 ends exactly on it,
@@ -345,13 +383,13 @@ smpte-leader-gen --fps 24 --bpm 120 --time-sig 4/4 \
 | `--bg-color` | hex | `#202020` | Background color. |
 | `--fg-color` | hex | `#E0E0E0` | Foreground (clock/lines/most text; the left-side metronome readout is a fixed turquoise). |
 | `--accent-color` | hex | `#FF3030` | Flash disc / accent. |
-| `--show-timecode-burnin` | flag | off | On-screen TC overlay (separate from embedded TC). |
+| `--show-timecode-burnin` | flag | off | On-screen timecode, centred below the clock. It shows the frame's position from the start of the file as non-drop `HH:MM:SS:FF` (frames counted at the rounded fps), always starting at `00:00:00:00`, so it ignores `--start-timecode` and drop-frame and can differ from the embedded timecode. |
 | `--no-clock` | flag | off | Hide the clock + wand. |
-| `--no-counter` | flag | off | Hide the `x/N` frame counter. |
+| `--no-counter` | flag | off | Hide the top-left frame counter. |
 | `--no-timer` | flag | off | Hide the digital countdown timer. |
 | `--no-flash` | flag | off | Hide the flashing circle. |
 | `--frames-per-block` | int | none | Override `F` (frames per leader-second). |
-| `--timer-format` | choice | `auto` | `auto` / `seconds` / `frames` / `tc`. |
+| `--timer-format` | choice | `auto` | What the top-right timer shows, counting down to t=0: `auto` and `seconds` (currently identical) show real seconds as `S.fff`, or `MM:SS.fff` when `--lead-seconds` ≥ 60; `frames` shows frames left; `tc` shows the time left as non-drop `HH:MM:SS:FF`. |
 | `--seed` | int | `0` | Reserved for future randomization; output is deterministic. |
 
 ### Runtime
@@ -383,17 +421,19 @@ Notes:
   must both be even**; the config validator enforces this and fails fast.
 - Incompatible profile/container combinations (e.g. ProRes in `mp4`) are
   rejected with a clear error.
-- All HD outputs carry BT.709 color metadata
+- Every output, at any resolution, is tagged with BT.709 color metadata
   (`-color_primaries bt709 -color_trc bt709 -colorspace bt709`).
 - **Matroska + 59.94 fps reporting:** the tool always passes the exact rational
   rate (`-r 60000/1001`) to FFmpeg, and MOV/MP4 store it exactly (timebase
   `1/60000`, so `ffprobe` reports `r_frame_rate = 60000/1001`). Matroska (`.mkv`,
-  used by `ffv1`/`x264lossless`) stores per-frame duration as an integer number
+  the default for `ffv1`/`x264lossless` and allowed for every profile) stores
+  per-frame duration as an integer number
   of nanoseconds, and `1001/60000 s` is not an exact nanosecond count, so
   `ffprobe` re-derives a near-equal rate (`19001/317 ≈ 59.94006`, error < 4e-6)
   for the 59.94 family in MKV. This is a container limitation, not a timing
   error — frame and audio durations remain correct. For bit-exact `r_frame_rate`
-  at 59.94, prefer a MOV/MP4 profile (the default `prores422hq` is exact).
+  at 59.94, use a MOV or MP4 container (the default `prores422hq` in MOV is
+  exact).
 
 ---
 
@@ -406,24 +446,32 @@ work together:
   `fps = num/den` (e.g. `24000/1001`). This governs real-time playback duration and
   is always exact — the exact rational is passed to FFmpeg's `-r`, never a decimal
   like `23.98`.
-- **`F` (frames per leader-second block):** `F = round(fps)` (override with
-  `--frames-per-block`). This integer drives every on-screen cue:
-  - the `x/N` counter denominator (`N = F`, displayed as `j/(F-1)`),
+- **`F` (frames per leader-second block):** `F` = fps rounded half-up (so
+  12.5 fps gives 13; override with `--frames-per-block`). This integer drives
+  every on-screen cue:
+  - the frame counter's range: it counts `0 … F−1` within each leader-second,
+    zero-padded to the width of `F−1`,
   - the number of frames in one **leader-second**,
   - one full revolution of the sweep wand.
+
+  The counter's denominator is the actual fps as a decimal, not `F`: frames
+  read `00/23.976 … 23/23.976` at 23.976 fps and `00/24 … 23/24` at 24 fps. With
+  `--frames-per-block` the numerator can therefore pass the denominator (e.g.
+  `29/24` with `--fps 24 --frames-per-block 30`).
 
 A **leader-second** is therefore a block of exactly **F frames** — not a wall-clock
 second. For frame index `i` (0-indexed over the whole output):
 
 - leader-second `s = (i − preroll) // F`
-- per-second counter `j = (i − preroll) % F`, drawn as `j/(F-1)`
+- per-second counter `j = (i − preroll) % F` (during the pre-roll, `j = i % F`),
+  drawn as zero-padded `j`, a `/`, then the fps
 - wand fraction `p = ((i − preroll) % F) / F` (clockwise from 12 o'clock; resets
   cleanly each block boundary)
 - countdown number (`full` style) `= L − s`, counting `L → 1`
 
 **Why frames, not wall-clock seconds:** at fractional rates the number of *encoded*
 frames in a true wall-clock second is non-integer (≈ 23.976 at 23.976 fps), which
-would make the `x/N` counter and the wand revolution irregular (sometimes 23,
+would make the frame counter and the wand revolution irregular (sometimes 23,
 sometimes 24 frames). Fixing the leader-second at exactly `F` frames keeps every
 on-screen cue clean and deterministic. The file is still encoded at the exact
 rational `fps`, so **real-time duration is correct** — a "leader-second" at 23.976
@@ -439,7 +487,10 @@ total_frames = preroll_frames  +  L·F (countdown)  +  tail_frames (black)
 - **t=0 / First Frame Of Picture (FFOP):** the reference instant the leader counts
   down to — `ffop_frame = preroll_frames + L·F`, the frame immediately after the
   countdown reaches zero. All timing is measured backward from here.
-- **Black tail:** literal black frames after t=0.
+- **Black tail:** literal black frames (RGB 0,0,0, not `--bg-color`) starting at
+  t=0: the FFOP frame is the first black frame, and with `--tail-seconds 0` the
+  file ends just before it. The only thing ever drawn in the tail is the flash
+  disc of a multi-frame beep (`--beep-frames`) that is still sounding.
 
 **The 2-pop.** The 2-pop is the canonical alignment marker: a single sync beep at
 exactly **2 leader-seconds (2·F frames) before t=0**, coinciding with the big
@@ -449,8 +500,9 @@ number **"2"**:
 twopop_frame = ffop_frame − 2·F   (== preroll + (L−2)·F)
 ```
 
-It is one of the per-second beeps but flagged so the **flash accents it** (rendered
-larger / in a second accent color). With `--no-persecond-beep` the 2-pop is the
+It is one of the per-second beeps and sounds identical to them, but it is flagged
+so the **flash accents it**: the disc is drawn 1.3× larger, in the same accent
+color. With `--no-persecond-beep` the 2-pop is the
 *only* beep that fires; `--no-twopop` removes the accent. `--no-beep` silences the
 whole beep track (per-second **and** 2-pop) so the metronome plays alone; the
 visual flash still fires (it keys off the schedule, not the audio).
@@ -504,9 +556,8 @@ markers stay crisp.
      before t=0.
 
 5. **Confirm t=0 / black tail.** After the countdown reaches the end of the "1"
-   second, the next frame is t=0 (FFOP). With the default leader the picture then
-   transitions to the black tail; t=0 is the reference zero everything counts down
-   to.
+   second, the next frame is t=0 (FFOP), which is also the first frame of the
+   black tail. t=0 is the reference zero everything counts down to.
 
 If the flash and beep ever diverge, or the 2-pop is off the "2", the playback or
 edit chain has introduced A/V offset.
@@ -541,6 +592,14 @@ so `make verify` is green on machines without FFmpeg.
 > those differ from the development environment the golden test may need its
 > stored hash refreshed.
 
+A heavier end-to-end check, outside the pytest suite, renders every profile plus
+the fractional and drop-frame rates and asserts the `ffprobe` properties (needs
+FFmpeg):
+
+```bash
+make acceptance    # runs scripts/acceptance.py
+```
+
 ---
 
 ## Project layout
@@ -553,12 +612,15 @@ smpte_leader_gen/
   timing.py       # rational fps, frame<->sample math, cue schedule (PURE)
   layout.py       # element positions/sizes from W,H (PURE)
   render.py       # per-frame drawing (cairo + Pillow) -> RGB24 bytes
-  audio.py        # beep / 2-pop / metronome synthesis -> stereo PCM -> WAV (PURE)
+  audio.py        # beep / 2-pop / metronome synthesis -> stereo PCM -> WAV
   encode.py       # FFmpeg command construction, discovery, timecode
   pipeline.py     # orchestrates schedule -> stream frames -> mux
   profiles.py     # the encoding profile table (PURE)
-  fonts/          # bundled deterministic fonts
+  fonts/          # bundled deterministic fonts + their LICENSE
 tests/            # pytest suite (see "Running the tests")
+scripts/
+  acceptance.py   # end-to-end ffprobe acceptance run (make acceptance)
+docs/images/      # README screenshots
 pyproject.toml
 Makefile
 ```
